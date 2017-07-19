@@ -1,0 +1,57 @@
+#+TITLE: Chaudhuri vs Fuzz
+
+Notes on the suitability of the Chaudhuri and Fuzz methods of sensitivity analysis for application to Fortran.
+
+
+* Chaudhuri
+
+** Papers
+
+|------------+----------------------|
+| Continuity | Chaudhuri et al 2010 |
+| Robustness | Chaudhuri et al 2011 |
+
+** Notes
+
+This method determines K-sensitivity (called robustness in the paper) in two steps:
+- Prove continuity
+- Prove piecewise K-linearity
+
+Due to a theorem in the paper, these together imply K-robustness.
+
+Continuity is proved using a complex abstract interpretation method which requires discharging many complex proofs through external solvers (which may or may not currently exist...).
+
+Piecewise K-linearity is proved using a simple abstract interpretation method.
+
+** Major Challenges
+*** Program Equivalence
+
+Godlin and Strichman 2009
+
+*** Hoare Triple Verification
+
+*** Arrays?
+
+*** Lack of automation?
+
+* Fuzz
+
+** Papers
+
+|-----------------------------------------------------------------+-------------------------------------------------------------------------------------------|
+| Original Fuzz Paper                                             | Reed and Pierce 2010                                                                      |
+| Description of an efficient type/sensitivity analysis algorithm | Type-based Sensitivity Analysis, D'Antoni and Gaboardi and Arias and Haeberlen and Pierce |
+| Category-theoretical formalisation                              | Gaboardi et al 2017                                                                       |
+
+** Notes
+ 
+Fuzz is a programming language which encodes program sensitivity at the type level. Types and therefore sensitivity can be inferred using the algorithm by Gaboardi et al. Some user annotation may be required.
+
+Fuzz is purely functional, and resembles PCF. Its type system is linear, where linear means something slightly different to the standard interpretation of linear logic. If a function argument ~x~ has grade ~k~, then the output of the function may not change more than ~k~ times faster than ~x~. Infinite grades are required to encode discontinuous and non-robust functions (i.e. the exponential function is continuous but non-robust because its rate of change cannot be bounded by any constant).
+
+** Major Challenges
+
+*** Converting Fortran to Fuzz
+
+- Linear types!
+- It's purely functional!

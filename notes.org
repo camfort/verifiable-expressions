@@ -30,9 +30,12 @@ Godlin and Strichman 2009
 
 *** Hoare Triple Verification
 
-*** Arrays?
+** Limitations
 
-*** Lack of automation?
+- Minimal sensitivity can't be inferred, only verified.
+- Considers only terminating programs with a priori bounds on the number of loop iterations
+- Proof obligations are not always automatically solvable
+
 
 * Fuzz
 
@@ -47,11 +50,24 @@ Godlin and Strichman 2009
  
 Fuzz is a programming language which encodes program sensitivity at the type level. Types and therefore sensitivity can be inferred using the algorithm by Gaboardi et al. Some user annotation may be required.
 
-Fuzz is purely functional, and resembles PCF. Its type system is linear, where linear means something slightly different to the standard interpretation of linear logic. If a function argument ~x~ has grade ~k~, then the output of the function may not change more than ~k~ times faster than ~x~. Infinite grades are required to encode discontinuous and non-robust functions (i.e. the exponential function is continuous but non-robust because its rate of change cannot be bounded by any constant).
+Fuzz is purely functional, and resembles PCF. Its type system is linear, where linear means something slightly different to the standard interpretation of linear logic. If a function argument ~x~ has grade ~k~, then the output of the function may not change more than ~k~ times faster than ~x~. Infinite grades are required to encode discontinuous or non-robust functions (i.e. the exponential function is continuous but non-robust because its rate of change cannot be bounded by any constant).
 
 ** Major Challenges
 
 *** Converting Fortran to Fuzz
 
-- Linear types!
-- It's purely functional!
+- Fuzz is purely functional with linear types!
+- For Fortran that doesn't have side-effects and doesn't access arrays, convert it to SSA and the translation to a pure functional language should follow.
+- We might be able to only handle pure code and still have a useful analysis.
+- Array access with ~forall~ should be fine to handle. Arbitrary indexing could be much more difficult.
+
+*** Arrays
+
+- We might be able to model arrays as lists, as some versions of Fuzz support μ-types
+- Alternatively add arrays as a native data type in our version of Fuzz, and figure out how to extend type-checking
+- Mutable access will be more difficult to encode. Create a fresh version of the array for each mutation?
+
+** Limitations
+
+- Might not be able to handle conditional branching (a more refined type system might help, see Gaboardi et al 2013)
+- No ability to reason about sensitivity dependent on size of input (e.g. arrays)

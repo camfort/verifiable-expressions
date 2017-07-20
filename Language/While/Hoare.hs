@@ -71,26 +71,18 @@ splitSeq = \case
 
 
 data AnnSeq l a
-  = Assignments [(l, Expr l)]
-  | Annotation (AnnSeq l a) [Prop l] (AnnCommand l a) [(l, Expr l)]
+  = JustAssign [(l, Expr l)]
+  | CmdAssign (AnnCommand l a) [(l, Expr l)]
+  | Annotation (AnnSeq l a) (Prop l) (AnnSeq l a)
   deriving (Show)
 
 
-joinAnn :: AnnSeq l a -> AnnSeq l a -> AnnSeq l a
-joinAnn (Assignments xs) (Assignments ys) = Assignments (xs ++ ys)
-joinAnn (Annotation s p c xs) (Assignments ys) = Annotation s p c (xs ++ ys)
-joinAnn r (Annotation s p c xs) = Annotation (r `joinAnn` s) p c xs
-
-
-joinWithMidcond :: AnnSeq l a -> Prop l -> AnnSeq l a -> Maybe (AnnSeq l a)
-joinWithMidcond (Assignments xs) midcond (Assignments ys)
-  | (loc, expr) : yss <- ys = Just (Annotation (Assignments xs) [midcond] (CAssign loc expr) yss)
-  | otherwise = Nothing
-joinWithMidcond (Annotation s p c xs) midcond (Assignments ys) =
-  Just (Annotation s (midcond : p) c (xs ++ ys))
-joinWithMidcond r midcond (Annotation s p c xs) =
-  do t <- joinWithMidcond r midcond s
-     return (Annotation t p c xs)
+joinAnn :: AnnSeq l a -> AnnSeq l a -> Maybe (AnnSeq l a)
+joinAnn (JustAssign xs) (JustAssign ys) = return $ JustAssign (xs ++ ys)
+joinAnn (JustAssign []) s@(CmdAssign _ _) = return s
+joinAnn (Annotation l p r) r' = Annotation l p <$> joinAnn r r'
+joinAnn l' (Annotation l p r) = joinAnn l' l >>= \l'' -> return $ Annotation l'' p r
+joinAnn _ _ = Nothing
 
 
 -- | Split the command into all the top-level sequenced commands, interspersed
@@ -101,16 +93,16 @@ splitSeq' = \case
   CSeq c1 (CAnn (PropAnn midcond _) c2) ->
     do a1 <- splitSeq' c1
        a2 <- splitSeq' c2
-       joinWithMidcond a1 midcond a2
+       return $ Annotation a1 midcond a2
   CSeq c1 (CAssign loc expr) ->
     do a1 <- splitSeq' c1
-       return $ a1 `joinAnn` Assignments [(loc, expr)]
+       a1 `joinAnn` JustAssign [(loc, expr)]
   CSeq c1 c2 ->
     do a1 <- splitSeq' c1
        a2 <- splitSeq' c2
-       return $ a1 `joinAnn` a2
-  CAssign loc expr -> return $ Assignments [(loc, expr)]
-  c -> return $ SingleCommand c
+       a1 `joinAnn` a2
+  CAssign loc expr -> return $ JustAssign [(loc, expr)]
+  c -> return $ CmdAssign c []
 
 
 substProp :: (Ord l) => Expr l -> l -> Prop l -> Prop l
@@ -134,27 +126,26 @@ andProps [x] = x
 andProps (x : xs) = x `PAnd` andProps xs
 
 
-seqVcs :: (Ord l, Show a, Show l) => Prop l -> Prop l -> AnnSeq l a -> Maybe [Prop l]
+seqVcs :: (Ord l) => Prop l -> Prop l -> AnnSeq l a -> Maybe [Prop l]
 seqVcs precond postcond = \case
-  Assignments xs -> Just [precond `PImplies` chainSub postcond xs]
-  Annotation s ps command xs ->
-    do let midcond = andProps ps
-       former <- seqVcs precond midcond s
-       latter <- generateVcs midcond (chainSub postcond xs) command
-       return (former ++ latter)
+  JustAssign xs -> Just [precond `PImplies` chainSub postcond xs]
+  CmdAssign c xs ->
+    let postcond' = chainSub postcond xs
+    in generateVcs precond postcond' c
+  Annotation l midcond r ->
+    do vcsL <- seqVcs precond midcond l
+       vcsR <- seqVcs midcond postcond r
+       return (vcsL ++ vcsR)
 
 
 -- | Generate verification conditions to prove that the given Hoare partial
 -- correctness triple holds.
-generateVcs :: (Ord l, Show a, Show l) => Prop l -> Prop l -> AnnCommand l a -> Maybe [Prop l]
+generateVcs :: (Ord l) => Prop l -> Prop l -> AnnCommand l a -> Maybe [Prop l]
 generateVcs precond postcond = \case
   CAnn (PropAnn prop _) command ->
     generateVcs (prop `PAnd` precond) postcond command
 
-  c@(CSeq _ _) ->
-    do seq <- splitSeq' c
-       traceShowM seq
-       seqVcs precond postcond seq
+  c@(CSeq _ _) -> splitSeq' c >>= seqVcs precond postcond
 
   CSkip -> return [precond `PImplies` postcond]
 

@@ -9,6 +9,7 @@ import           Language.While.Syntax
 import           Language.While.Syntax.Sugar
 
 
+testCommand :: Command [Char] a
 testCommand =
   "R" .=. "X" \\
   "Q" .=. 0   \\
@@ -17,6 +18,7 @@ testCommand =
   \\ "Q" .=. "Q" + 1
   )
 
+testCommandAnn :: Command String (PropAnn String ())
 testCommandAnn =
   "R" .=. "X" \\
   "Q" .=. 0   \\ (PBexpr ("R" `BEq` "X") `PAnd` PBexpr ("Q" `BEq` 0)) ^^^
@@ -26,14 +28,16 @@ testCommandAnn =
    \\ "Q" .=. "Q" + 1
    ))
 
+testPrecond :: Prop l
 testPrecond = PTrue
 
+testPostcond :: Prop String
 testPostcond =
   PBexpr ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
   PBexpr ("R" .< "Y")
 
--- provePartialHoare :: Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
-
+testVcs :: Maybe [Prop String]
 testVcs = generateVcs testPrecond testPostcond testCommandAnn
 
+test :: IO (Maybe Bool)
 test = provePartialHoare testPrecond testPostcond testCommandAnn

@@ -2,10 +2,8 @@
 
 module Language.While.Syntax.Sugar where
 
-import           Language.While.Syntax
 import           Language.While.Hoare
-
-import           Data.String           (IsString (..))
+import           Language.While.Syntax
 
 infix 1 .=.
 infixr 0 \\
@@ -44,14 +42,3 @@ prop ^^^ command = CAnn (PropAnn prop ()) command
 (.||) :: Bexpr l -> Bexpr l -> Bexpr l
 (.||) = BOr
 
-instance Num (Expr l) where
-  fromInteger = ELit
-
-  (+) = EAdd
-  (*) = EMul
-  (-) = ESub
-  abs = error "can't take abs of expressions"
-  signum = error "can't take signum of expressions"
-
-instance IsString s => IsString (Expr s) where
-  fromString = EVar . fromString

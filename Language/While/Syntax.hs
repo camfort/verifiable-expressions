@@ -1,6 +1,6 @@
-{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE DeriveTraversable  #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
@@ -9,17 +9,14 @@ module Language.While.Syntax where
 
 import           Control.Applicative (liftA2)
 import           Data.Data
+import           Data.String           (IsString (..))
 
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
-import           Data.Set            (Set)
-import qualified Data.Set            as Set
 
 import           Control.Monad.State
 
 import           Control.Lens
-import           Data.Data.Lens
-import           Data.Set.Lens
 
 
 data Expr l
@@ -42,6 +39,17 @@ instance Monad Expr where
   EVar x >>= f = f x
   ELit x >>= _ = ELit x
 
+instance Num (Expr l) where
+  fromInteger = ELit
+
+  (+) = EAdd
+  (*) = EMul
+  (-) = ESub
+  abs = error "can't take abs of expressions"
+  signum = error "can't take signum of expressions"
+
+instance IsString s => IsString (Expr s) where
+  fromString = EVar . fromString
 
 data Bexpr l
   = BLess (Expr l) (Expr l)

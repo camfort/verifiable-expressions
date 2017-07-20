@@ -1,13 +1,13 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Language.While.Pretty where
 
-import Data.List (intercalate)
+import           Data.List             (intercalate)
 
-import Language.While.Syntax
-import Language.While.Hoare
+import           Language.While.Hoare
+import           Language.While.Syntax
 
 
 class Pretty a where

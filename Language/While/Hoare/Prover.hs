@@ -3,19 +3,18 @@
 module Language.While.Hoare.Prover where
 
 import           Control.Applicative   (liftA2)
-import           Data.Data
+import           Control.Monad (join)
 import           Data.Maybe            (fromJust)
 
-import           Data.Map              (Map)
 import qualified Data.Map              as Map
 import           Data.Set              (Set)
-import qualified Data.Set              as Set
 
 import           Control.Lens
-import           Data.Data.Lens
 import           Data.Set.Lens
 
-import           Data.SBV
+import           Data.SBV              (Boolean (..), EqSymbolic (..),
+                                        OrdSymbolic (..), SBool, SInteger,
+                                        Symbolic, bAnd, isTheorem, sInteger)
 
 import           Language.While.Hoare
 import           Language.While.Syntax
@@ -73,15 +72,13 @@ symbolicVars props = do
 vcsToSBool :: [Prop SInteger] -> Maybe SBool
 vcsToSBool = fmap bAnd . traverse propToSBool
 
-generateSymbolicVcs :: Prop String -> Prop String -> AnnCommand String a -> Symbolic SBool
+generateSymbolicVcs :: Prop String -> Prop String -> AnnCommand String a -> Symbolic (Maybe SBool)
 generateSymbolicVcs precond postcond command =
-  do vcs <- case generateVcs precond postcond command of
-       Just v -> return v
-       Nothing -> fail "Command not properly annotated"
-
-     let symbolicVcs = symbolicVars vcs
-     fromJust . vcsToSBool <$> symbolicVcs
+  do let vcs = generateVcs precond postcond command
+         symbolicVcs = symbolicVars <$> vcs
+         result = fmap vcsToSBool <$> symbolicVcs
+     fmap join . sequence $ result
 
 provePartialHoare :: Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
 provePartialHoare precond postcond command =
-  isTheorem (Just 20) (generateSymbolicVcs precond postcond command)
+  isTheorem (Just 20) (fromJust <$> generateSymbolicVcs precond postcond command)

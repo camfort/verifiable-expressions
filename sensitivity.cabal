@@ -30,4 +30,4 @@ library
                      , sbv
   -- hs-source-dirs:      
   default-language:    Haskell2010
-  ghc-options:         -fwarn-incomplete-patterns
+  ghc-options:         -Wall

@@ -2,7 +2,6 @@
 
 Notes on the suitability of the Chaudhuri and Fuzz methods of sensitivity analysis for application to Fortran.
 
-
 * Chaudhuri
 
 ** Papers

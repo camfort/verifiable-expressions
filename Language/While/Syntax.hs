@@ -28,7 +28,7 @@ data Expr l
   | ESub (Expr l) (Expr l)
   | EVar l
   | ELit Integer
-  deriving (Data, Typeable, Functor, Foldable, Traversable)
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
 
 instance Applicative Expr where
   pure = return
@@ -50,7 +50,7 @@ data Bexpr l
   | BAnd (Bexpr l) (Bexpr l)
   | BOr (Bexpr l) (Bexpr l)
   | BNot (Bexpr l)
-  deriving (Data, Typeable, Functor, Foldable, Traversable)
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
 
 bindBexpr :: (a -> Expr b) -> Bexpr a -> Bexpr b
 bindBexpr f = \case
@@ -68,7 +68,7 @@ data Command l a
   | CAssign l (Expr l)
   | CIf (Bexpr l) (Command l a) (Command l a)
   | CWhile (Bexpr l) (Command l a)
-  deriving (Data, Typeable, Functor, Foldable, Traversable)
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
 
 
 makePrisms ''Expr

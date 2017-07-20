@@ -73,15 +73,15 @@ symbolicVars props = do
 vcsToSBool :: [Prop SInteger] -> Maybe SBool
 vcsToSBool = fmap bAnd . traverse propToSBool
 
-
--- generateVcs :: (Ord l) => Prop l -> Prop l -> AnnCommand l a -> Maybe [Prop l]
-provePartialHoare :: Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
-provePartialHoare precond postcond command =
+generateSymbolicVcs :: (Show a) => Prop String -> Prop String -> AnnCommand String a -> Symbolic SBool
+generateSymbolicVcs precond postcond command =
   do vcs <- case generateVcs precond postcond command of
        Just v -> return v
        Nothing -> fail "Command not properly annotated"
 
      let symbolicVcs = symbolicVars vcs
-         goal = fromJust . vcsToSBool <$> symbolicVcs
+     fromJust . vcsToSBool <$> symbolicVcs
 
-     isTheorem (Just 20) goal
+provePartialHoare :: (Show a) => Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
+provePartialHoare precond postcond command =
+  isTheorem (Just 20) (generateSymbolicVcs precond postcond command)

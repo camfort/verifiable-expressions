@@ -2,10 +2,11 @@
 
 module Language.While.Test where
 
-import           Language.While.Syntax
-import           Language.While.Syntax.Sugar
 import           Language.While.Hoare
 import           Language.While.Hoare.Prover
+import           Language.While.Pretty
+import           Language.While.Syntax
+import           Language.While.Syntax.Sugar
 
 
 testCommand =
@@ -32,5 +33,7 @@ testPostcond =
   PBexpr ("R" .< "Y")
 
 -- provePartialHoare :: Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
+
+testVcs = generateVcs testPrecond testPostcond testCommandAnn
 
 test = provePartialHoare testPrecond testPostcond testCommandAnn

@@ -7,6 +7,7 @@ import           Language.While.Hoare.Prover
 import           Language.While.Pretty
 import           Language.While.Syntax
 import           Language.While.Syntax.Sugar
+import           Language.While.Prop
 
 
 testCommand :: Command [Char] a
@@ -21,22 +22,22 @@ testCommand =
 testCommandAnn :: Command String (PropAnn String ())
 testCommandAnn =
   "R" .=. "X" \\
-  "Q" .=. 0   \\ (PBexpr ("R" `BEq` "X") `PAnd` PBexpr ("Q" `BEq` 0)) ^^^
+  "Q" .=. 0   \\ (PEmbed ("R" `BEq` "X") `PAnd` PEmbed ("Q" `BEq` 0)) ^^^
   CWhile ("Y" .<= "R")
-  ((PBexpr ("X" `BEq` ("R" + "Y" * "Q"))) ^^^
+  ((PEmbed ("X" `BEq` ("R" + "Y" * "Q"))) ^^^
    (  "R" .=. "R" - "Y"
    \\ "Q" .=. "Q" + 1
    ))
 
-testPrecond :: Prop l
-testPrecond = PTrue
+testPrecond :: HoareProp l
+testPrecond = PLit True
 
-testPostcond :: Prop String
+testPostcond :: HoareProp String
 testPostcond =
-  PBexpr ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
-  PBexpr ("R" .< "Y")
+  PEmbed ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
+  PEmbed ("R" .< "Y")
 
-testVcs :: Maybe [Prop String]
+testVcs :: Maybe [HoareProp String]
 testVcs = generateVcs testPrecond testPostcond testCommandAnn
 
 test :: IO (Maybe Bool)

@@ -20,6 +20,10 @@ library
                      , Language.While.Syntax.Sugar
                      , Language.While.Hoare
                      , Language.While.Hoare.Prover
+                     , Language.While.Prop
+                     , Language.While.Pretty
+                     , Language.While.Test
+                     , Language.While.Continuity
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.9 && <4.10

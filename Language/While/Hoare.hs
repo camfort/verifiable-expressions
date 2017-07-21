@@ -3,57 +3,34 @@
 {-# LANGUAGE DeriveTraversable  #-}
 {-# LANGUAGE LambdaCase         #-}
 
-module Language.While.Hoare where
-
-import           Control.Applicative   (liftA2)
-import           Data.Data
+module Language.While.Hoare
+  ( WhileProp
+  , evalWhileProp
+  , substWhileProp
+  , PropAnn(..)
+  , AnnCommand
+  , generateVcs
+  ) where
 
 import           Language.While.Syntax
+import           Language.While.Prop
 
 
 --------------------------------------------------------------------------------
 --  Exposed Data Types
 --------------------------------------------------------------------------------
 
-data Prop l
-  = PAnd (Prop l) (Prop l)
-  | POr (Prop l) (Prop l)
-  | PNot (Prop l)
-  | PImplies (Prop l) (Prop l)
-  | PBexpr (Bexpr l)
-  | PTrue
-  | PFalse
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+type WhileProp l = Prop (Bexpr l)
+
+evalWhileProp :: (Ord l, Num n, Ord n, Applicative f) => (l -> f n) -> WhileProp l -> f Bool
+evalWhileProp = evalPropBool . evalBexpr
 
 
-bindProp :: (a -> Expr b) -> Prop a -> Prop b
-bindProp f = \case
-  PAnd p1 p2 -> PAnd (bindProp f p1) (bindProp f p2)
-  POr p1 p2 -> POr (bindProp f p1) (bindProp f p2)
-  PNot prop -> PNot (bindProp f prop)
-  PImplies p1 p2 -> PImplies (bindProp f p1) (bindProp f p2)
-  PBexpr bexpr -> PBexpr (bindBexpr f bexpr)
-  PTrue -> PTrue
-  PFalse -> PFalse
+substWhileProp :: (Ord l) => Expr l -> l -> WhileProp l -> WhileProp l
+substWhileProp expr loc = fmap (bindBexpr (\loc' -> if loc' == loc then expr else EVar loc'))
 
 
-evalProp :: (Ord l, Num n, Ord n) => (l -> Maybe n) -> Prop l -> Maybe Bool
-evalProp env = \case
-  PAnd p1 p2 -> liftA2 (&&) (evalProp env p1) (evalProp env p2)
-  POr p1 p2 -> liftA2 (||) (evalProp env p1) (evalProp env p2)
-  PNot prop -> not <$> evalProp env prop
-  PImplies p1 p2 -> liftA2 (==>) (evalProp env p1) (evalProp env p2)
-    where a ==> b = not a || b
-  PBexpr bexpr -> evalBexpr env bexpr
-  PTrue -> Just True
-  PFalse -> Just False
-
-
-substProp :: (Ord l) => Expr l -> l -> Prop l -> Prop l
-substProp expr loc = bindProp (\loc' -> if loc' == loc then expr else EVar loc')
-
-
-data PropAnn l a = PropAnn (Prop l) a
+data PropAnn l a = PropAnn (WhileProp l) a
   deriving (Show, Functor, Foldable, Traversable)
 
 
@@ -65,30 +42,30 @@ type AnnCommand l a = Command l (PropAnn l a)
 
 -- | Generate verification conditions to prove that the given Hoare partial
 -- correctness triple holds.
-generateVcs :: (Ord l) => Prop l -> Prop l -> AnnCommand l a -> Maybe [Prop l]
+generateVcs :: (Ord l) => WhileProp l -> WhileProp l -> AnnCommand l a -> Maybe [WhileProp l]
 generateVcs precond postcond = \case
   CAnn (PropAnn prop _) command ->
     generateVcs (prop `PAnd` precond) postcond command
 
   c@(CSeq _ _) -> splitSeq c >>= seqVcs precond postcond
 
-  CSkip -> return [precond `PImplies` postcond]
+  CSkip -> return [precond `PImpl` postcond]
 
   CAssign loc expr ->
-    return [precond `PImplies` substProp expr loc postcond]
+    return [precond `PImpl` substWhileProp expr loc postcond]
 
   CIf cond c1 c2 ->
-    do vcs1 <- generateVcs (precond `PAnd` PBexpr cond) postcond c1
-       vcs2 <- generateVcs (precond `PAnd` PNot (PBexpr cond)) postcond c2
+    do vcs1 <- generateVcs (precond `PAnd` PEmbed cond) postcond c1
+       vcs2 <- generateVcs (precond `PAnd` PNot (PEmbed cond)) postcond c2
        return (vcs1 ++ vcs2)
 
   CWhile cond (CAnn (PropAnn invariant _) body) ->
-    do let condHolds = PBexpr cond
+    do let condHolds = PEmbed cond
 
        invariantMaintained <- generateVcs (invariant `PAnd` condHolds) invariant body
 
-       return ([precond `PImplies` invariant] ++
-               [(invariant `PAnd` PNot condHolds) `PImplies` postcond] ++
+       return ([precond `PImpl` invariant] ++
+               [(invariant `PAnd` PNot condHolds) `PImpl` postcond] ++
                invariantMaintained)
 
   -- If this falls through, the command is not sufficiently annotated
@@ -103,17 +80,17 @@ generateVcs precond postcond = \case
 data AnnSeq l a
   = JustAssign [(l, Expr l)]
   | CmdAssign (AnnCommand l a) [(l, Expr l)]
-  | Annotation (AnnSeq l a) (Prop l) (AnnSeq l a)
+  | Annotation (AnnSeq l a) (WhileProp l) (AnnSeq l a)
   deriving (Show)
 
 -- | Generates the verification conditions for a sequence of commands
 -- interspersed with annotations.
-seqVcs :: (Ord l) => Prop l -> Prop l -> AnnSeq l a -> Maybe [Prop l]
+seqVcs :: (Ord l) => WhileProp l -> WhileProp l -> AnnSeq l a -> Maybe [WhileProp l]
 seqVcs precond postcond = \case
   -- A sequence of assignments can be verified by checking the precondition
   -- implies the postcondition, after substitutions are performed by the
   -- assignments.
-  JustAssign xs -> Just [precond `PImplies` chainSub postcond xs]
+  JustAssign xs -> Just [precond `PImpl` chainSub postcond xs]
 
   -- A command followed by a sequence of assignments can be verified by
   -- substituting based on the assignments in the postcondition, then verifying
@@ -130,10 +107,10 @@ seqVcs precond postcond = \case
 
 
 -- | Performs substitutions in a proposition from a chain of assignments.
-chainSub :: (Ord l) => Prop l -> [(l, Expr l)] -> Prop l
+chainSub :: (Ord l) => WhileProp l -> [(l, Expr l)] -> WhileProp l
 chainSub prop [] = prop
 chainSub prop ((loc, expr) : xs) =
-  substProp expr loc (chainSub prop xs)
+  substWhileProp expr loc (chainSub prop xs)
 
 
 -- | Joins two annotations together without a Hoare annotation in between. Fails

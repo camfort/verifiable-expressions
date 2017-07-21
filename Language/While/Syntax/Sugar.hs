@@ -21,7 +21,7 @@ infixr 6 .||
 (\\) :: Command l a -> Command l a -> Command l a
 (\\) = CSeq
 
-(^^^) :: Prop l -> AnnCommand l () -> AnnCommand l ()
+(^^^) :: HoareProp l -> AnnCommand l () -> AnnCommand l ()
 prop ^^^ command = CAnn (PropAnn prop ()) command
 
 (.<) :: Expr l -> Expr l -> Bexpr l

@@ -6,49 +6,69 @@ module Language.While.Pretty where
 
 import           Data.List             (intercalate)
 
-import           Language.While.Hoare
-import           Language.While.Syntax
+import           Language.While.Prop   as P
+import           Language.While.Syntax as S
 
 
 class Pretty a where
   pretty :: a -> String
 
+instance Pretty a => Pretty (ExprOp a) where
+  pretty =
+    let combine = \case
+          OAdd a b -> a ++ " + " ++ b
+          OMul a b -> "(" ++ a ++ ") * (" ++ b ++ ")"
+          OSub a b -> "(" ++ a ++ ") - (" ++ b ++ ")"
+    in combine . fmap pretty
+
+instance Pretty a => Pretty (ArithOp a) where
+  pretty =
+    let combine = \case
+          OLess a b -> a ++ " < " ++ b
+          OLessEq a b -> a ++ " <= " ++ b
+          OEq a b -> a ++ " = " ++ b
+    in combine . fmap pretty
+
+instance Pretty a => Pretty (BoolOp a) where
+  pretty =
+    let combine = \case
+          S.OAnd a b -> "(" ++ a ++ ") & (" ++ b ++ ")"
+          S.OOr a b -> "(" ++ a ++ ") | (" ++ b ++ ")"
+          S.ONot a -> "! (" ++ a ++ ")"
+    in combine . fmap pretty
+
+instance Pretty a => Pretty (PropOp a) where
+  pretty =
+    let combine = \case
+          P.OAnd a b -> "(" ++ a ++ ") & (" ++ b ++ ")"
+          P.OOr a b -> "(" ++ a ++ ") | (" ++ b ++ ")"
+          P.OImpl a b -> "(" ++ a ++ ") -> (" ++ b ++ ")"
+          P.OEquiv a b -> "(" ++ a ++ ") <-> (" ++ b ++ ")"
+          P.ONot a -> "! (" ++ a ++ ")"
+    in combine . fmap pretty
 
 instance Pretty l => Pretty (Expr l) where
   pretty = \case
-    EAdd e1 e2 -> pretty e1 ++ " + " ++ pretty e2
-    EMul e1 e2 -> "(" ++ pretty e1 ++ ") * (" ++ pretty e2 ++ ")"
-    ESub e1 e2 -> "(" ++ pretty e1 ++ ") - (" ++ pretty e2 ++ ")"
+    EOp op -> pretty op
     EVar loc -> pretty loc
     ELit x -> show x
 
-
 instance Pretty l => Pretty (Bexpr l) where
   pretty = \case
-    BLess e1 e2 -> pretty e1 ++ " < " ++ pretty e2
-    BLessEq e1 e2 -> pretty e1 ++ " <= " ++ pretty e2
-    BEq e1 e2 -> pretty e1 ++ " = " ++ pretty e2
-    BAnd b1 b2 -> "(" ++ pretty b1 ++ ") && (" ++ pretty b2 ++ ")"
-    BOr b1 b2 -> "(" ++ pretty b1 ++ ") || (" ++ pretty b2 ++ ")"
-    BNot bexpr -> "¬ (" ++ pretty bexpr ++ ")"
+    BArithOp op -> pretty op
+    BBoolOp op -> pretty op
 
-
-instance Pretty l => Pretty (Prop l) where
+instance Pretty a => Pretty (Prop a) where
   pretty = \case
-    PBexpr bexpr -> pretty bexpr
-    PAnd p1 p2 -> "(" ++ pretty p1 ++ ") && (" ++ pretty p2 ++ ")"
-    POr p1 p2 -> "(" ++ pretty p1 ++ ") || (" ++ pretty p2 ++ ")"
-    PImplies p1 p2 -> "(" ++ pretty p1 ++ ") => (" ++ pretty p2 ++ ")"
-    PNot prop -> "¬ (" ++ pretty prop ++ ")"
-    PTrue -> "T"
-    PFalse -> "F"
-
+    PEmbed a -> pretty a
+    POp op -> pretty op
+    PLit True -> "T"
+    PLit False -> "F"
 
 instance Pretty l => Pretty (Maybe l) where
   pretty = \case
     Nothing -> "<nothing>"
     Just l -> pretty l
-
 
 instance {-# OVERLAPPABLE #-} Pretty l => Pretty [l] where
   pretty xs =
@@ -57,10 +77,8 @@ instance {-# OVERLAPPABLE #-} Pretty l => Pretty [l] where
        intercalate "\n, " pretties ++
        "\n]"
 
-
 instance {-# OVERLAPPING #-} Pretty String where
   pretty = id
-
 
 putPretty :: Pretty a => a -> IO ()
 putPretty = putStrLn . pretty

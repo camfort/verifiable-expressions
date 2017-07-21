@@ -2,9 +2,7 @@
 
 module Language.While.Hoare.Prover where
 
-import           Control.Applicative   (liftA2)
-import           Control.Monad (join)
-import           Data.Maybe            (fromJust)
+import           Data.Functor.Identity (Identity (..))
 
 import qualified Data.Map              as Map
 import           Data.Set              (Set)
@@ -17,43 +15,53 @@ import           Data.SBV              (Boolean (..), EqSymbolic (..),
                                         Symbolic, bAnd, isTheorem, sInteger)
 
 import           Language.While.Hoare
-import           Language.While.Syntax
+import           Language.While.Prop   as P
+import           Language.While.Syntax as S
+
 
 symbolicExpr :: Expr SInteger -> Maybe SInteger
 symbolicExpr = evalExpr Just
 
 
-evalBexpr' :: (Num n, OrdSymbolic n) => (l -> Maybe n) -> Bexpr l -> Maybe SBool
-evalBexpr' env = \case
-  BLess e1 e2 -> liftA2 (.<) (evalExpr env e1) (evalExpr env e2)
-  BLessEq e1 e2 -> liftA2 (.<=) (evalExpr env e1) (evalExpr env e2)
-  BEq e1 e2 -> liftA2 (.==) (evalExpr env e1) (evalExpr env e2)
-  BAnd b1 b2 -> liftA2 (&&&) (evalBexpr' env b1) (evalBexpr' env b2)
-  BOr b1 b2 -> liftA2 (|||) (evalBexpr' env b1) (evalBexpr' env b2)
-  BNot bexpr -> bnot <$> evalBexpr' env bexpr
+evalArithOp' :: (OrdSymbolic n) => ArithOp n -> SBool
+evalArithOp' = \case
+  OLess a b -> a .< b
+  OLessEq a b -> a .<= b
+  OEq a b -> a .== b
 
 
-symbolicBexpr :: Bexpr SInteger -> Maybe SBool
-symbolicBexpr = evalBexpr' Just
+evalBoolOp' :: (Boolean b) => BoolOp b -> b
+evalBoolOp' = \case
+  S.OAnd a b -> a &&& b
+  S.OOr a b -> a ||| b
+  S.ONot a -> bnot a
 
 
-propToSBool :: Prop SInteger -> Maybe SBool
-propToSBool = \case
-  PAnd p1 p2 -> liftA2 (&&&) (propToSBool p1) (propToSBool p2)
-  POr p1 p2 -> liftA2 (|||) (propToSBool p1) (propToSBool p2)
-  PNot prop -> bnot <$> propToSBool prop
-  PImplies p1 p2 -> liftA2 implies (propToSBool p1) (propToSBool p2)
-    where implies a b = bnot a ||| b
-  PBexpr bexpr -> symbolicBexpr bexpr
-  PTrue -> return true
-  PFalse -> return false
+evalPropOp :: (Boolean b) => PropOp b -> b
+evalPropOp =
+  let impl a b = bnot a ||| b
+  in \case
+    P.OAnd a b -> a &&& b
+    P.OOr a b -> a ||| b
+    P.OImpl a b -> a `impl` b
+    P.OEquiv a b -> (a `impl` b) &&& (b `impl` a)
+    P.ONot a -> bnot a
 
 
-symbolicVars :: [Prop String] -> Symbolic [Prop SInteger]
+evalSymbProp :: WhileProp SInteger -> SBool
+evalSymbProp
+  = runIdentity
+  . evalPropGeneral
+      evalPropOp
+      fromBool
+      (evalBexprGeneral evalArithOp' evalBoolOp' pure)
+
+
+symbolicVars :: [WhileProp String] -> Symbolic [WhileProp SInteger]
 symbolicVars props = do
   let
     freeVars :: Set String
-    freeVars = setOf (traverse . traverse) props
+    freeVars = setOf (traverse . traverse . traverse) props
 
   symbolAssoc <-
     traverse (\name -> sInteger name >>= \symbol -> return (name, symbol))
@@ -61,24 +69,28 @@ symbolicVars props = do
 
   let symbolMap = Map.fromList symbolAssoc
 
-      result :: Maybe [Prop SInteger]
-      result = props & traverse . traverse %%~ (`Map.lookup` symbolMap)
+      result :: Maybe [WhileProp SInteger]
+      result = props & traverse . traverse . traverse %%~ (`Map.lookup` symbolMap)
 
   case result of
     Just r -> return r
     Nothing -> error "unreachable"
 
 
-vcsToSBool :: [Prop SInteger] -> Maybe SBool
-vcsToSBool = fmap bAnd . traverse propToSBool
+vcsToSBool :: [WhileProp SInteger] -> SBool
+vcsToSBool = bAnd . map evalSymbProp
 
-generateSymbolicVcs :: Prop String -> Prop String -> AnnCommand String a -> Symbolic (Maybe SBool)
+
+generateSymbolicVcs :: WhileProp String -> WhileProp String -> AnnCommand String a -> Maybe (Symbolic SBool)
 generateSymbolicVcs precond postcond command =
-  do let vcs = generateVcs precond postcond command
-         symbolicVcs = symbolicVars <$> vcs
-         result = fmap vcsToSBool <$> symbolicVcs
-     fmap join . sequence $ result
+  do vcs <- generateVcs precond postcond command
+     let symbolicVcs = symbolicVars vcs
+     return (vcsToSBool <$> symbolicVcs)
 
-provePartialHoare :: Prop String -> Prop String -> AnnCommand String a -> IO (Maybe Bool)
+
+provePartialHoare :: WhileProp String -> WhileProp String -> AnnCommand String a -> IO (Maybe Bool)
 provePartialHoare precond postcond command =
-  isTheorem (Just 20) (fromJust <$> generateSymbolicVcs precond postcond command)
+  do vcs <- case generateSymbolicVcs precond postcond command of
+       Just v -> return v
+       Nothing -> fail "Command not sufficiently annotated"
+     isTheorem (Just 20) vcs

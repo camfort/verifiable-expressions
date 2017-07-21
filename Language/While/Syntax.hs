@@ -2,30 +2,51 @@
 {-# LANGUAGE DeriveFunctor      #-}
 {-# LANGUAGE DeriveTraversable  #-}
 {-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE PatternSynonyms    #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
 
 module Language.While.Syntax where
 
-import           Control.Applicative (liftA2)
 import           Data.Data
-import           Data.String           (IsString (..))
+import           Data.String         (IsString (..))
 
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
 
 import           Control.Monad.State
 
-import           Control.Lens
+import           Control.Lens        hiding (op)
 
+--------------------------------------------------------------------------------
+--  Arithmetic expressions
+--------------------------------------------------------------------------------
+
+data ExprOp a = OAdd a a | OMul a a | OSub a a
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+
+evalExprOp :: (Num n) => ExprOp n -> n
+evalExprOp = \case
+  OAdd x y -> x + y
+  OMul x y -> x * y
+  OSub x y -> x - y
 
 data Expr l
-  = EAdd (Expr l) (Expr l)
-  | EMul (Expr l) (Expr l)
-  | ESub (Expr l) (Expr l)
+  = EOp (ExprOp (Expr l))
   | EVar l
   | ELit Integer
   deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+
+
+pattern EAdd :: Expr t -> Expr t -> Expr t
+pattern EAdd a b = EOp (OAdd a b)
+
+pattern EMul :: Expr t -> Expr t -> Expr t
+pattern EMul a b = EOp (OMul a b)
+
+pattern ESub :: Expr t -> Expr t -> Expr t
+pattern ESub a b = EOp (OSub a b)
+
 
 instance Applicative Expr where
   pure = return
@@ -33,9 +54,7 @@ instance Applicative Expr where
 
 instance Monad Expr where
   return = EVar
-  EAdd e1 e2 >>= f = EAdd (e1 >>= f) (e2 >>= f)
-  EMul e1 e2 >>= f = EMul (e1 >>= f) (e2 >>= f)
-  ESub e1 e2 >>= f = ESub (e1 >>= f) (e2 >>= f)
+  EOp op >>= f = EOp (fmap (>>= f) op)
   EVar x >>= f = f x
   ELit x >>= _ = ELit x
 
@@ -51,23 +70,69 @@ instance Num (Expr l) where
 instance IsString s => IsString (Expr s) where
   fromString = EVar . fromString
 
-data Bexpr l
-  = BLess (Expr l) (Expr l)
-  | BLessEq (Expr l) (Expr l)
-  | BEq (Expr l) (Expr l)
-  | BAnd (Bexpr l) (Bexpr l)
-  | BOr (Bexpr l) (Bexpr l)
-  | BNot (Bexpr l)
+--------------------------------------------------------------------------------
+--  Boolean expressions
+--------------------------------------------------------------------------------
+
+data ArithOp a
+  = OLess a a
+  | OLessEq a a
+  | OEq a a
   deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+
+
+data BoolOp a
+  = OAnd a a
+  | OOr a a
+  | ONot a
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+
+
+evalArithOp :: (Ord n) => ArithOp n -> Bool
+evalArithOp = \case
+  OLess a b -> a < b
+  OLessEq a b -> a <= b
+  OEq a b -> a == b
+
+
+evalBoolOp :: BoolOp Bool -> Bool
+evalBoolOp = \case
+  OAnd a b -> a && b
+  OOr a b -> a || b
+  ONot a -> not a
+
+
+data Bexpr l
+  = BArithOp (ArithOp (Expr l))
+  | BBoolOp (BoolOp (Bexpr l))
+  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+
+
+pattern BLess :: Expr t -> Expr t -> Bexpr t
+pattern BLess a b = BArithOp (OLess a b)
+
+pattern BLessEq :: Expr t -> Expr t -> Bexpr t
+pattern BLessEq a b = BArithOp (OLessEq a b)
+
+pattern BEq :: Expr t -> Expr t -> Bexpr t
+pattern BEq a b = BArithOp (OEq a b)
+
+
+pattern BAnd :: Bexpr t -> Bexpr t -> Bexpr t
+pattern BAnd a b = BBoolOp (OAnd a b)
+
+pattern BOr :: Bexpr t -> Bexpr t -> Bexpr t
+pattern BOr a b = BBoolOp (OOr a b)
+
+pattern BNot :: Bexpr t -> Bexpr t
+pattern BNot a = BBoolOp (ONot a)
+
 
 bindBexpr :: (a -> Expr b) -> Bexpr a -> Bexpr b
 bindBexpr f = \case
-  BLess e1 e2 -> BLess (e1 >>= f) (e2 >>= f)
-  BLessEq e1 e2 -> BLessEq (e1 >>= f) (e2 >>= f)
-  BEq e1 e2 -> BEq (e1 >>= f) (e2 >>= f)
-  BAnd b1 b2 -> BAnd (bindBexpr f b1) (bindBexpr f b2)
-  BOr b1 b2 -> BOr (bindBexpr f b1) (bindBexpr f b2)
-  BNot bexpr -> BNot (bindBexpr f bexpr)
+  BArithOp op -> BArithOp (fmap (>>= f) op)
+  BBoolOp op -> BBoolOp (fmap (bindBexpr f) op)
+
 
 data Command l a
   = CAnn a (Command l a)
@@ -91,23 +156,27 @@ data StepResult a
   deriving (Functor)
 
 
-evalExpr :: (Num n) => (l -> Maybe n) -> Expr l -> Maybe n
+evalExpr :: (Num n, Applicative f) => (l -> f n) -> Expr l -> f n
 evalExpr env = \case
-  EAdd e1 e2 -> liftA2 (+) (evalExpr env e1) (evalExpr env e2)
-  EMul e1 e2 -> liftA2 (*) (evalExpr env e1) (evalExpr env e2)
-  ESub e1 e2 -> liftA2 (-) (evalExpr env e1) (evalExpr env e2)
+  EOp op -> evalExprOp <$> traverse (evalExpr env) op
   EVar loc -> env loc
-  ELit val -> Just (fromInteger val)
+  ELit val -> pure (fromInteger val)
 
 
-evalBexpr :: (Num n, Ord n) => (l -> Maybe n) -> Bexpr l -> Maybe Bool
-evalBexpr env = \case
-  BLess e1 e2 -> liftA2 (<) (evalExpr env e1) (evalExpr env e2)
-  BLessEq e1 e2 -> liftA2 (<=) (evalExpr env e1) (evalExpr env e2)
-  BEq e1 e2 -> liftA2 (==) (evalExpr env e1) (evalExpr env e2)
-  BAnd b1 b2 -> liftA2 (&&) (evalBexpr env b1) (evalBexpr env b2)
-  BOr b1 b2 -> liftA2 (||) (evalBexpr env b1) (evalBexpr env b2)
-  BNot bexpr -> not <$> evalBexpr env bexpr
+evalBexprGeneral
+  :: (Num n, Applicative f)
+  => (ArithOp n -> bool)
+  -> (BoolOp bool -> bool)
+  -> (l -> f n)
+  -> Bexpr l
+  -> f bool
+evalBexprGeneral evalArith evalBool env = \case
+  BArithOp op -> evalArith <$> traverse (evalExpr env) op
+  BBoolOp op -> evalBool <$> traverse (evalBexprGeneral evalArith evalBool env) op
+
+
+evalBexpr :: (Num n, Ord n, Applicative f) => (l -> f n) -> Bexpr l -> f Bool
+evalBexpr = evalBexprGeneral evalArithOp evalBoolOp
 
 
 oneStep :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) (StepResult (Command l a))
@@ -125,16 +194,14 @@ oneStep = \case
 
   CAssign loc expr ->
     do env <- get
-       oldVal <- use (at loc)
-       case oldVal of
-         Just _ ->
-           case evalExpr (`Map.lookup` env) expr of
-             Just val ->
-               do at loc .= Just val
-                  return Terminated
-             Nothing -> return Failed
+       if Map.member loc env then
+         case evalExpr (`Map.lookup` env) expr of
+           Just val ->
+             do at loc .= Just val
+                return Terminated
+           Nothing -> return Failed
          -- Can't assign a memory location that doesn't exist
-         Nothing -> return Failed
+         else return Failed
 
   CIf cond c1 c2 ->
     do env <- get

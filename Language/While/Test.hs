@@ -29,15 +29,15 @@ testCommandAnn =
    \\ "Q" .=. "Q" + 1
    ))
 
-testPrecond :: HoareProp l
+testPrecond :: WhileProp l
 testPrecond = PLit True
 
-testPostcond :: HoareProp String
+testPostcond :: WhileProp String
 testPostcond =
   PEmbed ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
   PEmbed ("R" .< "Y")
 
-testVcs :: Maybe [HoareProp String]
+testVcs :: Maybe [WhileProp String]
 testVcs = generateVcs testPrecond testPostcond testCommandAnn
 
 test :: IO (Maybe Bool)

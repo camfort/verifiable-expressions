@@ -88,9 +88,9 @@ generateSymbolicVcs precond postcond command =
      return (vcsToSBool <$> symbolicVcs)
 
 
-provePartialHoare :: WhileProp String -> WhileProp String -> AnnCommand String a -> IO (Maybe Bool)
+provePartialHoare :: WhileProp String -> WhileProp String -> AnnCommand String a -> IO Bool
 provePartialHoare precond postcond command =
   do vcs <- case generateSymbolicVcs precond postcond command of
        Just v -> return v
        Nothing -> fail "Command not sufficiently annotated"
-     isTheorem (Just 20) vcs
+     isTheorem vcs

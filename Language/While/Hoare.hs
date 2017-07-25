@@ -27,7 +27,8 @@ evalWhileProp = evalPropBool . evalBexpr
 
 
 substWhileProp :: (Ord l) => Expr l -> l -> WhileProp l -> WhileProp l
-substWhileProp expr loc = fmap (bindBexpr (\loc' -> if loc' == loc then expr else EVar loc'))
+substWhileProp expr loc =
+  fmap (bindBexpr (\loc' -> if loc' == loc then expr else EVar loc'))
 
 
 data PropAnn l a = PropAnn (WhileProp l) a

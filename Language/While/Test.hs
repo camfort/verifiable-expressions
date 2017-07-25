@@ -40,5 +40,5 @@ testPostcond =
 testVcs :: Maybe [WhileProp String]
 testVcs = generateVcs testPrecond testPostcond testCommandAnn
 
-test :: IO (Maybe Bool)
+test :: IO Bool
 test = provePartialHoare testPrecond testPostcond testCommandAnn

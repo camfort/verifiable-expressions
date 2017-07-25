@@ -15,7 +15,7 @@ data PropOp a
   | OImpl a a
   | OEquiv a a
   | ONot a
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+  deriving (Show, Eq, Ord, Data, Typeable, Functor, Foldable, Traversable)
 
 data Prop a
   = POp (PropOp (Prop a))
@@ -25,7 +25,7 @@ data Prop a
   | PEmbed a
   -- ^ An embedded value, for example a variable or some kind of atomic
   -- expression.
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+  deriving (Show, Eq, Ord, Data, Typeable, Functor, Foldable, Traversable)
 
 
 instance Applicative Prop where

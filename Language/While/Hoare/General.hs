@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveFunctor              #-}
@@ -8,16 +6,18 @@
 {-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoMonomorphismRestriction  #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE NoMonomorphismRestriction       #-}
 
 module Language.While.Hoare.General where
 
@@ -114,7 +114,7 @@ instance MonadIO (Verifier expr) where
 --   deriving (Show)
 
 --------------------------------------------------------------------------------
---  Exposed Functions
+--  Combinators
 --------------------------------------------------------------------------------
 
 pNot :: PropOn expr Bool -> PropOn expr Bool
@@ -129,17 +129,6 @@ pOr x y = EOp (OpOr x y)
 pImpl :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
 pImpl x y = pNot x `pOr` y
 
-checkCondition :: (Substitutive expr, HoistOp SBV expr) => PropOn (expr Var) Bool -> Verifier expr Bool
-checkCondition prop = do
-  symbolicProp <- propToSBV prop
-  liftIO (isTheorem symbolicProp)
-
--- verifySequence :: (Variable v) =>  (c -> Verifier v ()) -> AnnSeq v e c -> Verifier v ()
--- verifySequence verifyCommand seq = undefined
-
--- addCondition :: SBool -> Verifier v ()
--- addCondition cond = Verifier (varConditions %= (cond :))
-
 -- | If the two variables match in both type and name, return the given
 -- expression. Otherwise, return an expression just containing this variable.
 --
@@ -150,6 +139,25 @@ subVar newExpr (Var targetName) thisVar@(Var thisName) =
   case eqT :: Maybe (a :~: b) of
     Just Refl | thisName == targetName -> newExpr
     _ -> pureVar thisVar
+
+--------------------------------------------------------------------------------
+--  Discharging conditions
+--------------------------------------------------------------------------------
+
+checkCondition :: (Substitutive expr, HoistOp SBV expr) => PropOn (expr Var) Bool -> Verifier expr Bool
+checkCondition prop = do
+  symbolicProp <- propToSBV prop
+  liftIO (isTheorem symbolicProp)
+
+--------------------------------------------------------------------------------
+--  Generating verification conditions
+--------------------------------------------------------------------------------
+
+-- verifySequence :: (Variable v) =>  (c -> Verifier v ()) -> AnnSeq v e c -> Verifier v ()
+-- verifySequence verifyCommand seq = undefined
+
+-- addCondition :: SBool -> Verifier v ()
+-- addCondition cond = Verifier (varConditions %= (cond :))
 
 assignVC
   :: forall expr a. (Substitutive expr)

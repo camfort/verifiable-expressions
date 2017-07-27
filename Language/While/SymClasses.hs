@@ -19,9 +19,9 @@ it'll break (TM).
 
 -- TODO: Add instances for remaining types in SBV.
 
-module Language.While.SymClass
+module Language.While.SymClasses
   (
-    SymValue
+    SymValue(layerSymbolic)
   , SymBool(..)
   , SymEq(..)
   , SymOrd(..)

@@ -50,7 +50,7 @@ import           Data.Functor.Compose
 
 import           Data.SBV                   (SBV)
 import           Language.While.Expressions
-import           Language.While.SBVWrap
+import           Language.While.SymClasses
 
 --------------------------------------------------------------------------------
 --  Operators

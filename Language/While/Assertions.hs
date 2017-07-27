@@ -1,58 +1,56 @@
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE PatternSynonyms        #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
+{-# OPTIONS_GHC -fno-warn-orphans   #-}
 
-module Language.While.Assertions where
+module Language.While.Assertions
+  (
+  -- * Generalized Prelude type classes
+    SymBool(..)
+  , SymEq(..)
+  , SymOrd(..)
+
+  -- * Standard operators
+  , BoolOp(..)
+  , EqOp(..)
+  , OrdOp(..)
+  , LitOp(..)
+  , NumOp(..)
+
+  -- * Propositions
+  , PropOn
+
+  -- * Basic Operators
+  , BasicOp
+  , bLit
+  , bNot
+  , bAnd
+  , bOr
+  , bAdd
+  , bSub
+  , bMul
+  , bEq
+  , bLT
+  , bLE
+  , bGT
+  , bGE
+  ) where
 
 import           Data.Functor.Compose
 
 import           Data.SBV                   (SBV)
-import qualified Data.SBV                   as S
-
 import           Language.While.Expressions
-
---------------------------------------------------------------------------------
---  Generalised Prelude Classes
---------------------------------------------------------------------------------
-
-class SymBool b where
-  fromBool :: Bool -> b
-
-  (.&&) :: b -> b -> b
-  bnot :: b -> b
-
-  (.||) :: b -> b -> b
-  a .|| b = bnot (bnot a .&& bnot b)
-
-class SymBool b => SymEq b a where
-  (.==) :: a -> a -> b
-  x .== y = bnot (x ./= y)
-
-  (./=) :: a -> a -> b
-  x ./= y = bnot (x .== y)
-
-class (SymEq b a, SymBool b) => SymOrd b a where
-  (.<) :: a -> a -> b
-  x .< y = bnot (x .> y)
-
-  (.<=) :: a -> a -> b
-  x .<= y = bnot (x .>= y)
-
-  (.>) :: a -> a -> b
-  x .> y = bnot (x .< y)
-
-  (.>=) :: a -> a -> b
-  x .>= y = bnot (x .<= y)
-
--- instance S.OrdSymbolic a => SymOrd S.SBool a where
---   (.<) = (S..<)
---   (.<=) = (S..<=)
+import           Language.While.SBVWrap
 
 --------------------------------------------------------------------------------
 --  Operators
@@ -64,11 +62,12 @@ data BoolOp t a where
   OpOr :: SymBool b => t b -> t b -> BoolOp t b
 
 data NumOp t a where
-  OpAdd :: Num a => t a -> t a -> NumOp t a
-  OpSub :: Num a => t a -> t a -> NumOp t a
+  OpAdd :: SymNum a => t a -> t a -> NumOp t a
+  OpSub :: SymNum a => t a -> t a -> NumOp t a
+  OpMul :: SymNum a => t a -> t a -> NumOp t a
 
 data LitOp (t :: * -> *) a where
-  OpLit :: a -> LitOp t a
+  OpLit :: SymValue a => a -> LitOp t a
 
 data EqOp t a where
   OpEq :: SymEq b a => t a -> t a -> EqOp t b
@@ -94,10 +93,12 @@ instance Operator NumOp where
   traverseOp f = \case
     OpAdd x y -> OpAdd <$> f x <*> f y
     OpSub x y -> OpSub <$> f x <*> f y
+    OpMul x y -> OpMul <$> f x <*> f y
 
   evalOp = \case
-    OpAdd x y -> (+) <$> x <*> y
-    OpSub x y -> (-) <$> x <*> y
+    OpAdd x y -> (.+) <$> x <*> y
+    OpSub x y -> (.-) <$> x <*> y
+    OpMul x y -> (.*) <$> x <*> y
 
 instance Operator LitOp where
   traverseOp _ = \case
@@ -126,7 +127,43 @@ instance Operator OrdOp where
     OpGT x y -> (.>) <$> x <*> y
     OpGE x y -> (.>=) <$> x <*> y
 
-type BasicOp = LitOp :+: (BoolOp :+: NumOp) :+: (EqOp :+: OrdOp)
+type BasicOp = OpChoice '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
+
+bLit :: SymValue a => a -> BasicOp t a
+bLit x = Op0 (OpLit x)
+
+bNot :: SymBool a => t a -> BasicOp t a
+bNot x = Op1 (OpNot x)
+
+bAnd :: SymBool a => t a -> t a -> BasicOp t a
+bAnd x y = Op1 (OpAnd x y)
+
+bOr :: SymBool a => t a -> t a -> BasicOp t a
+bOr x y = Op1 (OpOr x y)
+
+bAdd :: SymNum a => t a -> t a -> BasicOp t a
+bAdd x y = Op2 (OpAdd x y)
+
+bSub :: SymNum a => t a -> t a -> BasicOp t a
+bSub x y = Op2 (OpSub x y)
+
+bMul :: SymNum a => t a -> t a -> BasicOp t a
+bMul x y = Op2 (OpMul x y)
+
+bEq :: SymEq b a => t a -> t a -> BasicOp t b
+bEq x y = Op3 (OpEq x y)
+
+bLT :: SymOrd b a => t a -> t a -> BasicOp t b
+bLT x y = Op4 (OpLT x y)
+
+bLE :: SymOrd b a => t a -> t a -> BasicOp t b
+bLE x y = Op4 (OpLE x y)
+
+bGT :: SymOrd b a => t a -> t a -> BasicOp t b
+bGT x y = Op4 (OpGT x y)
+
+bGE :: SymOrd b a => t a -> t a -> BasicOp t b
+bGE x y = Op4 (OpGE x y)
 
 --------------------------------------------------------------------------------
 --  Expressions
@@ -137,18 +174,8 @@ type BasicOp = LitOp :+: (BoolOp :+: NumOp) :+: (EqOp :+: OrdOp)
 type PropOn = Expr BoolOp
 
 --------------------------------------------------------------------------------
---  SBV Instances
+--  HoistOp SBV Instances
 --------------------------------------------------------------------------------
-
-instance SymBool b => S.Boolean b where
-  true = fromBool True
-  bnot = bnot
-  (&&&) = (.&&)
-
-instance SymBool b => SymBool (SBV b) where
-  fromBool = S.fromBool
-  bnot = S.bnot
-  (.&&) = (S.&&&)
 
 instance HoistOp SBV BoolOp where
   hoistOp' = \case
@@ -156,12 +183,23 @@ instance HoistOp SBV BoolOp where
     OpAnd x y -> OpAnd (getCompose x) (getCompose y)
     OpOr x y -> OpOr (getCompose x) (getCompose y)
 
-instance SymEq (SBV Bool) a => S.EqSymbolic a where
-  (.==) = (.==)
-
--- instance SymEq (SBV Bool) a => SymEq (SBV Bool) (SBV a) where
---   (.==) = (S..==)
-
 instance HoistOp SBV EqOp where
   hoistOp' = \case
     OpEq x y -> OpEq (getCompose x) (getCompose y)
+
+instance HoistOp SBV OrdOp where
+  hoistOp' = \case
+    OpLT x y -> OpLT (getCompose x) (getCompose y)
+    OpLE x y -> OpLE (getCompose x) (getCompose y)
+    OpGT x y -> OpGT (getCompose x) (getCompose y)
+    OpGE x y -> OpGE (getCompose x) (getCompose y)
+
+instance HoistOp SBV LitOp where
+  hoistOp' = \case
+    OpLit x -> OpLit (layerSymbolic x)
+
+instance HoistOp SBV NumOp where
+  hoistOp' = \case
+    OpAdd x y -> OpAdd (getCompose x) (getCompose y)
+    OpSub x y -> OpSub (getCompose x) (getCompose y)
+    OpMul x y -> OpMul (getCompose x) (getCompose y)

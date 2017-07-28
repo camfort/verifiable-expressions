@@ -13,6 +13,10 @@
 {-# LANGUAGE TypeSynonymInstances      #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
+
+-- TODO: Stop nesting 'Symbolic' contexts!
+-- https://github.com/LeventErkok/sbv/issues/71
+
 module Language.Verification
   (
   -- * The verification monad
@@ -42,11 +46,10 @@ import           Control.Monad.State
 import           Control.Monad.Reader
 
 import           Data.Map                                   (Map)
-import qualified Data.Map                                   as Map
-import           Data.SBV                                   hiding (( # ), (.>))
+import           Data.SBV                                   hiding (( # ), OrdSymbolic(..))
+import           Data.SBV.Control
 
 import           Language.Verification.Expression
-import           Language.Verification.Expression.DSL       hiding (Expr)
 import           Language.Verification.Expression.Operators
 
 --------------------------------------------------------------------------------
@@ -146,8 +149,14 @@ subVar newExpr (Var targetName) thisVar@(Var thisName) =
 checkProp :: (Substitutive expr, HoistOp SBV expr, Location l) => PropOn (expr (Var l)) Bool -> Verifier l expr Bool
 checkProp prop = do
   symbolicProp <- propToSBV prop
-  smtConfig <- Verifier ask
-  liftIO (isTheoremWith smtConfig symbolicProp)
+  -- cfg <- Verifier ask
+  -- liftIO (isTheoremWith cfg symbolicProp)
+  liftSymbolic . query $ do
+    constrain (bnot symbolicProp)
+    cs <- checkSat
+    case cs of
+      Unsat -> return True
+      _ -> return False
 
 --------------------------------------------------------------------------------
 --  Internal Functions
@@ -155,10 +164,10 @@ checkProp prop = do
 
 propToSBV :: (Substitutive expr, HoistOp SBV expr, Location l) => PropOn (expr (Var l)) Bool -> Verifier l expr SBool
 propToSBV prop = do
-  propWithSymbols <- traverseOp (traverseOp symbolVar) prop
+  propWithSymbols <- htraverseOp (htraverseOp symbolVar) prop
 
   let evalExpr' = runIdentity . evalOp . hoistOp pure
-      result = evalExpr' (mapOp evalExpr' propWithSymbols)
+      result = evalExpr' (hmapOp evalExpr' propWithSymbols)
 
   return result
 
@@ -177,45 +186,3 @@ symbolVar (Var varLoc) = do
       newSymbol <- liftSymbolic (symbolic (locationName varLoc))
       Verifier $ varSymbols . at varLoc .= Just (_Symbol # newSymbol)
       return newSymbol
-
---------------------------------------------------------------------------------
---  Tests
---------------------------------------------------------------------------------
-
-var' :: (SymWord a, Verifiable a) => l -> Expr BasicOp (Var l) a
-var' = var . Var
-
-testExpr1 :: Expr BasicOp (Var String) Integer
-testExpr1 = var' "x" .* lit 10
-
-testExpr2 :: Expr BasicOp (Var String) Integer
-testExpr2 = var' "x" .* lit 5
-
-testExpr3 :: Expr BasicOp (Var String) Bool
-testExpr3 = testExpr1 .> testExpr2
-
-testProp :: Prop (Var String) Bool
-testProp = expr testExpr3
-
-testVarmap :: Map String (VerifierSymbol Identity)
-testVarmap = Map.fromList
-  [ ("x", VSInteger 5)
-  ]
-
-testGetVar :: (Var String) a -> Maybe a
-testGetVar (Var v) = testVarmap ^? at v . _Just . _Symbol . _Wrapped
-
-testProp' :: PropOn (Expr BasicOp Maybe) Bool
-testProp' = mapOp (mapOp testGetVar) testProp
-
-testEval :: Maybe Bool
-testEval = evalOp (mapOp evalOp testProp')
-
-testVerifier :: Verifier String (Expr BasicOp) Bool
-testVerifier = checkProp testProp
-
-testConfig :: SMTConfig
-testConfig = defaultSMTCfg { verbose = True }
-
-test :: IO (Either (VerifierError String (Expr BasicOp)) Bool)
-test = runVerifierWith testConfig testVerifier

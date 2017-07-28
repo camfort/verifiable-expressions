@@ -56,7 +56,7 @@ type Prop v a = E.Expr BoolOp (E.Expr BasicOp v) a
 --------------------------------------------------------------------------------
 
 -- | Embed a variable into an expression.
-var :: v a -> Expr v a
+var :: v a -> E.Expr op v a
 var = EVar
 
 -- | Lift an expression into the land of propositions.

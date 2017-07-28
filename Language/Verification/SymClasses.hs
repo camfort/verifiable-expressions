@@ -111,10 +111,10 @@ class SymValue b => SymBool b where
   symNot :: b -> b
 
   symOr :: b -> b -> b
-  a `symOr` b = symNot (symNot a `symAnd` symNot b)
+  symOr a b = symNot ((symNot a) `symAnd` (symNot b))
 
   symImpl :: b -> b -> b
-  symImpl x y = symNot x `symOr` y
+  symImpl x y = (symNot x) `symOr` y
 
   symEquiv :: b -> b -> b
   symEquiv x y = (x `symImpl` y) `symAnd` (y `symImpl` x)
@@ -122,12 +122,16 @@ class SymValue b => SymBool b where
 instance SymBool Bool where
   symFromBool = id
   symAnd = (&&)
+  symOr = (||)
   symNot = not
 
 instance SymBool b => SymBool (SBV b) where
   symFromBool = layerSymbolic . symFromBool
 
-  x `symAnd` y = transmuteSBV (transmuteSBV x S.&&& transmuteSBV y :: SBV Bool)
+  symAnd x y = transmuteSBV (transmuteSBV x S.&&& transmuteSBV y :: SBV Bool)
+  symOr x y = transmuteSBV (transmuteSBV x S.||| transmuteSBV y :: SBV Bool)
+  symImpl x y = transmuteSBV (transmuteSBV x S.==> transmuteSBV y :: SBV Bool)
+  symEquiv x y = transmuteSBV (transmuteSBV x S.<=> transmuteSBV y :: SBV Bool)
   symNot x = transmuteSBV (bnot (transmuteSBV x) :: SBV Bool)
 
 --------------------------------------------------------------------------------
@@ -162,20 +166,33 @@ class (SymEq b a, SymBool b) => SymOrd b a where
   symLe x y = (x `symLt` y) `symOr` (x `symEq` y)
 
   symGt :: a -> a -> b
-  symGt x y = symNot (symLt x y)
+  symGt x y = symNot (symLe x y)
 
   symGe :: a -> a -> b
-  symGe x y = symNot (symLe x y)
+  symGe x y = symNot (symLt x y)
 
 instance (Ord a, SymValue a) => SymOrd Bool a where
   symLt = (<)
+  symLe = (<=)
+  symGt = (>)
+  symGe = (>=)
+
+-- See [Note: Typeable]
+tryOrdTypes
+  :: forall a b. (Typeable a, Typeable b)
+  => (forall c. (OrdSymbolic c) => c -> c -> SBool)
+  -> (a -> a -> b)
+  -> (a -> a -> b)
+tryOrdTypes f backup
+  | Just Refl <- eqT :: Maybe (b :~: SBool)
+  , Just (BinFunc g) <- findInstance (BinFunc f) sbvInstances = g
+  | otherwise = backup
 
 instance (SymOrd b a) => SymOrd (SBV b) (SBV a) where
-  -- See [Note: Typeable]
-  symLt
-    | Just Refl <- eqT :: Maybe (b :~: Bool)
-    , Just (BinFunc f) <- findInstance (BinFunc (S..<)) sbvInstances = f
-    | otherwise = unsafeUnderSymbolic "SymOrd <" symLt
+  symLt = tryOrdTypes (S..<) (unsafeUnderSymbolic "SymOrd <" symLt)
+  symLe = tryOrdTypes (S..<=) (unsafeUnderSymbolic "SymOrd <=" symLt)
+  symGt = tryOrdTypes (S..>) (unsafeUnderSymbolic "SymOrd >" symGt)
+  symGe = tryOrdTypes (S..>=) (unsafeUnderSymbolic "SymOrd >=" symGt)
 
 --------------------------------------------------------------------------------
 --  SymNum

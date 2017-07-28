@@ -49,4 +49,5 @@ testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
 test :: IO (Either (VerifierError String (V.Expr V.BasicOp)) Bool)
-test = runVerifierWith testConfig $ provePartialHoare testPrecond testPostcond testCommandAnn
+test = runVerifierWith testConfig $ do
+  provePartialHoare testPrecond testPostcond testCommandAnn

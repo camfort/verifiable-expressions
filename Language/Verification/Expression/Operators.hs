@@ -67,12 +67,12 @@ data OrdOp t a where
   OpGE :: SymOrd b a => t a -> t a -> OrdOp t b
 
 instance Operator BoolOp where
-  traverseOp f = \case
+  htraverseOp f = \case
     OpNot x -> OpNot <$> f x
     OpAnd x y -> OpAnd <$> f x <*> f y
     OpOr x y -> OpOr <$> f x <*> f y
-    OpImpl x y -> OpOr <$> f x <*> f y
-    OpEquiv x y -> OpOr <$> f x <*> f y
+    OpImpl x y -> OpImpl <$> f x <*> f y
+    OpEquiv x y -> OpEquiv <$> f x <*> f y
 
   evalOp = \case
     OpNot x -> symNot <$> x
@@ -82,7 +82,7 @@ instance Operator BoolOp where
     OpEquiv x y -> symEquiv <$> x <*> y
 
 instance Operator NumOp where
-  traverseOp f = \case
+  htraverseOp f = \case
     OpAdd x y -> OpAdd <$> f x <*> f y
     OpSub x y -> OpSub <$> f x <*> f y
     OpMul x y -> OpMul <$> f x <*> f y
@@ -93,21 +93,21 @@ instance Operator NumOp where
     OpMul x y -> symMul <$> x <*> y
 
 instance Operator LitOp where
-  traverseOp _ = \case
+  htraverseOp _ = \case
     OpLit x -> pure (OpLit x)
 
   evalOp = \case
     OpLit x -> pure x
 
 instance Operator EqOp where
-  traverseOp f = \case
+  htraverseOp f = \case
     OpEq x y -> OpEq <$> f x <*> f y
 
   evalOp = \case
     OpEq x y -> symEq <$> x <*> y
 
 instance Operator OrdOp where
-  traverseOp f = \case
+  htraverseOp f = \case
     OpLT x y -> OpLT <$> f x <*> f y
     OpLE x y -> OpLE <$> f x <*> f y
     OpGT x y -> OpGT <$> f x <*> f y
@@ -170,30 +170,30 @@ type PropOn = Expr BoolOp
 --------------------------------------------------------------------------------
 
 instance HoistOp SBV BoolOp where
-  hoistOp' = \case
-    OpNot x -> OpNot (getCompose x)
-    OpAnd x y -> OpAnd (getCompose x) (getCompose y)
-    OpOr x y -> OpOr (getCompose x) (getCompose y)
-    OpImpl x y -> OpImpl (getCompose x) (getCompose y)
-    OpEquiv x y -> OpEquiv (getCompose x) (getCompose y)
+  hoistOp f = \case
+    OpNot x -> OpNot (f x)
+    OpAnd x y -> OpAnd (f x) (f y)
+    OpOr x y -> OpOr (f x) (f y)
+    OpImpl x y -> OpImpl (f x) (f y)
+    OpEquiv x y -> OpEquiv (f x) (f y)
 
 instance HoistOp SBV EqOp where
-  hoistOp' = \case
-    OpEq x y -> OpEq (getCompose x) (getCompose y)
+  hoistOp f = \case
+    OpEq x y -> OpEq (f x) (f y)
 
 instance HoistOp SBV OrdOp where
-  hoistOp' = \case
-    OpLT x y -> OpLT (getCompose x) (getCompose y)
-    OpLE x y -> OpLE (getCompose x) (getCompose y)
-    OpGT x y -> OpGT (getCompose x) (getCompose y)
-    OpGE x y -> OpGE (getCompose x) (getCompose y)
+  hoistOp f = \case
+    OpLT x y -> OpLT (f x) (f y)
+    OpLE x y -> OpLE (f x) (f y)
+    OpGT x y -> OpGT (f x) (f y)
+    OpGE x y -> OpGE (f x) (f y)
 
 instance HoistOp SBV LitOp where
-  hoistOp' = \case
+  hoistOp _ = \case
     OpLit x -> OpLit (layerSymbolic x)
 
 instance HoistOp SBV NumOp where
-  hoistOp' = \case
-    OpAdd x y -> OpAdd (getCompose x) (getCompose y)
-    OpSub x y -> OpSub (getCompose x) (getCompose y)
-    OpMul x y -> OpMul (getCompose x) (getCompose y)
+  hoistOp f = \case
+    OpAdd x y -> OpAdd (f x) (f y)
+    OpSub x y -> OpSub (f x) (f y)
+    OpMul x y -> OpMul (f x) (f y)

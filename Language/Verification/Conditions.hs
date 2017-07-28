@@ -83,7 +83,7 @@ pIff x y = (x `pImpl` y) `pAnd` (y `pImpl` x)
 subAssignment
   :: (Substitutive expr, Location l)
   => Assignment expr (Var l) -> PropOn (expr (Var l)) a -> PropOn (expr (Var l)) a
-subAssignment (Assignment targetVar newExpr) = mapOp (bindVars (subVar newExpr targetVar))
+subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars (subVar newExpr targetVar))
 
 
 -- | Chains substitutions, substituting using each assignment in the given list

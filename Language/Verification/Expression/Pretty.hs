@@ -107,7 +107,7 @@ instance Pretty1 (Const String) where
 instance (Pretty2 op, Operator op) => Pretty2 (Expr op) where
   pretty2Prec p = \case
     EVar x -> pretty1Prec p x
-    EOp op -> pretty2Prec p $ mapOp (Const . pretty2Prec p) op
+    EOp op -> pretty2Prec p $ hmapOp (Const . pretty2Prec p) op
 
 instance (Pretty2 (OpChoice '[])) where
   pretty2 x = case x of

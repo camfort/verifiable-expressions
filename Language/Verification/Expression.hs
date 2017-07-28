@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE EmptyCase             #-}
 {-# LANGUAGE FlexibleContexts      #-}
@@ -13,6 +14,7 @@
 
 module Language.Verification.Expression where
 
+import           Control.Monad ((<=<))
 import           Data.Functor.Compose
 import           Data.Functor.Identity
 
@@ -23,14 +25,14 @@ import           Data.Functor.Identity
 -- | The class of operators, i.e. higher-order traversables.
 class Operator op where
   -- | An operator is a higher order traversable over operands.
-  traverseOp :: (Applicative f) => (forall b. t b -> f (t' b)) -> op t a -> f (op t' a)
+  htraverseOp :: (Applicative f) => (forall b. t b -> f (t' b)) -> op t a -> f (op t' a)
 
   -- | An operator can be folded whenever its operands are applicative.
   evalOp :: (Applicative t) => op t a -> t a
 
   -- | An operator is a higher order functor over operands.
-  mapOp :: (forall b. t b -> t' b) -> op t a -> op t' a
-  mapOp f = runIdentity . traverseOp (Identity . f)
+  hmapOp :: (forall b. t b -> t' b) -> op t a -> op t' a
+  hmapOp f = runIdentity . htraverseOp (Identity . f)
 
 -- | The class of expressions which contain variables that can be substituted,
 -- i.e. higher-order monads.
@@ -50,9 +52,9 @@ data (o1 :+: o2) (t :: * -> *) a
   | OpRight (o2 t a)
 
 instance (Operator o1, Operator o2) => Operator (o1 :+: o2) where
-  traverseOp f = \case
-    OpLeft op -> OpLeft <$> traverseOp f op
-    OpRight op -> OpRight <$> traverseOp f op
+  htraverseOp f = \case
+    OpLeft op -> OpLeft <$> htraverseOp f op
+    OpRight op -> OpRight <$> htraverseOp f op
 
   evalOp = \case
     OpLeft op -> evalOp op
@@ -69,16 +71,16 @@ data OpChoice ops (t :: * -> *) a where
 
 
 instance Operator (OpChoice '[]) where
-  traverseOp _ x = case x of {}
+  htraverseOp _ x = case x of {}
     -- absurd
 
   evalOp x = case x of {}
     -- absurd
 
 instance (Operator op, Operator (OpChoice ops)) => Operator (OpChoice (op : ops)) where
-  traverseOp f = \case
-    Op0 x -> Op0 <$> traverseOp f x
-    OpS x -> OpS <$> traverseOp f x
+  htraverseOp f = \case
+    Op0 x -> Op0 <$> htraverseOp f x
+    OpS x -> OpS <$> htraverseOp f x
 
   evalOp = \case
     Op0 x -> evalOp x
@@ -109,7 +111,7 @@ traverseVars
   :: (Applicative f, Operator op)
   => (forall b. v b -> f (v' b))
   -> Expr op v a -> f (Expr op v' a)
-traverseVars = traverseOp
+traverseVars = htraverseOp
 
 -- | Variables in an expression can be substituted.
 instance (Operator op) => Substitutive (Expr op) where
@@ -117,56 +119,60 @@ instance (Operator op) => Substitutive (Expr op) where
 
   bindVars f = \case
     EVar x -> f x
-    EOp op -> EOp $ mapOp (bindVars f) op
+    EOp op -> EOp $ hmapOp (bindVars f) op
 
 -- | Given a way to evaluate variables, evaluate the whole expression.
-evalExpr :: (Applicative f, Operator op) => (forall b. v b -> f b) -> Expr op v a -> f a
-evalExpr evalVar = evalOp . mapOp evalVar
+evalExpr
+  :: (Applicative f, Operator op)
+  => (forall b. v b -> f b)
+  -> Expr op v a
+  -> f a
+evalExpr evalVar = evalOp . hmapOp evalVar
 
 -- | It turns out an expression can be treated as an operator. "Variables"
 -- become operator argument positions.
 instance (Operator op) => Operator (Expr op) where
-  traverseOp f = \case
+  htraverseOp f = \case
     EVar x -> EVar <$> f x
-    EOp op -> EOp <$> traverseOp (traverseOp f) op
+    EOp op -> EOp <$> htraverseOp (htraverseOp f) op
   evalOp = \case
     EVar x -> x
-    EOp op -> evalOp (mapOp evalOp op)
-
--- instance (Operator op, Functor f) => Functor (Expr op f) where
---   fmap f = \case
---     EVar x -> EVar (fmap f x)
---     EOp op -> _
+    EOp op -> evalOp (hmapOp evalOp op)
 
 --------------------------------------------------------------------------------
 --  Hoisting
 --------------------------------------------------------------------------------
 
 -- | A particular type constructor @f@ can sometimes be /hoisted/ over an
--- operator, making the operator work over objects in @f@.
-class (Operator op) => HoistOp f op where
-  hoistOp' :: op (Compose g f) a -> op g (f a)
+-- operator, making the operator work over objects in @t@.
+class (Operator op) => HoistOp t op where
+  -- {-# MINIMAL hoistOp | hoistOp' #-}
 
-  hoistOp :: (forall b. f b -> g (f b)) -> op f a -> op g (f a)
-  hoistOp f = hoistOp' . mapOp (Compose . f)
+  hoistOp :: (forall b. f b -> g (t b)) -> op f a -> op g (t a)
+  hoistOp f = hoistOp' . hmapOp (Compose . f)
+
+  hoistOp' :: op (Compose f t) a -> op f (t a)
+  hoistOp' = hoistOp getCompose
 
 -- | If @f@ can be hoisted over an operator @op@, then it can also be hoisted
 -- over the free monad formed by @op@.
 instance HoistOp f op => HoistOp f (Expr op) where
-  hoistOp' = \case
-    EVar x -> EVar (getCompose x)
-    EOp o -> EOp . hoistOp' . mapOp (Compose . hoistOp') $ o
+  hoistOp f = \case
+    EVar x -> EVar . f $ x
+    EOp o -> EOp . hoistOp getCompose . hmapOp (Compose . hoistOp f) $ o
 
 instance (HoistOp f o1, HoistOp f o2) => HoistOp f (o1 :+: o2) where
-  hoistOp' = \case
-    OpLeft x -> OpLeft (hoistOp' x)
-    OpRight x -> OpRight (hoistOp' x)
+  hoistOp f = \case
+    OpLeft x -> OpLeft (hoistOp f x)
+    OpRight x -> OpRight (hoistOp f x)
 
 instance HoistOp f (OpChoice '[]) where
-  hoistOp' x = case x of
+  hoistOp _ x = case x of
     -- absurd
 
-instance (HoistOp f op, HoistOp f (OpChoice ops)) => HoistOp f (OpChoice (op : ops)) where
-  hoistOp' = \case
-    Op0 x -> Op0 (hoistOp' x)
-    OpS x -> OpS (hoistOp' x)
+instance (HoistOp f op, HoistOp f (OpChoice ops)
+         ) => HoistOp f (OpChoice (op : ops)) where
+
+  hoistOp f = \case
+    Op0 x -> Op0 (hoistOp f x)
+    OpS x -> OpS (hoistOp f x)

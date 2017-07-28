@@ -1,25 +1,34 @@
-{-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE NoMonomorphismRestriction  #-}
-{-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE DeriveDataTypeable        #-}
+{-# LANGUAGE DeriveFunctor             #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TemplateHaskell           #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
-module Language.While.Hoare.General where
+module Language.Verification
+  (
+  -- * The verification monad
+    Verifier
+  , runVerifier
+  , VerifierError(..)
+
+  -- * Verifiable types and variables
+  , VerifierSymbol
+  , Verifiable
+  , Var(..)
+
+  -- * Verifier actions
+  , checkProp
+
+  -- * Miscellaneous combinators
+  , subVar
+  ) where
 
 import           Data.Data
 
@@ -27,12 +36,12 @@ import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.State
 
-import           Data.Map                   (Map)
-import qualified Data.Map                   as Map
-import           Data.SBV                   hiding (( # ))
+import           Data.Map                                   (Map)
+import qualified Data.Map                                   as Map
+import           Data.SBV                                   hiding (( # ))
 
-import           Language.While.Assertions
-import           Language.While.Expressions
+import           Language.Verification.Expression
+import           Language.Verification.Expression.Operators
 
 
 --------------------------------------------------------------------------------
@@ -61,16 +70,15 @@ instance Verifiable AlgReal where
 data Var a where
   Var :: (SymWord a, Verifiable a) => String -> Var a
 
-data VerifierState expr =
+data VerifierState (expr :: (* -> *) -> * -> *) =
   VerifierState
   { _varSymbols    :: Map String (VerifierSymbol SBV)
-  , _varConditions :: [expr Var Bool]
   }
 
 makeLenses ''VerifierState
 
 vs0 :: VerifierState expr
-vs0 = VerifierState mempty mempty
+vs0 = VerifierState mempty
 
 --------------------------------------------------------------------------------
 --  Exposed Types
@@ -78,8 +86,8 @@ vs0 = VerifierState mempty mempty
 
 data VerifierError (expr :: (* -> *) -> * -> *)
   = VEMismatchedSymbolType String
-  deriving (Show, Eq, Ord, Data, Typeable)
   -- ^ The same variable was used for two different symbol types
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 data Verifier expr a =
   Verifier
@@ -102,32 +110,9 @@ instance Monad (Verifier expr) where
 instance MonadIO (Verifier expr) where
   liftIO = Verifier . liftIO
 
--- -- | An annotated sequence. Consists of runs of assignments, with other commands
--- -- separated by annotations.
--- data AnnSeq expr c
---   = JustAssign [(v, e)]
---   -- ^ Just a series of assignments without annotations
---   | CmdAssign c [(v, e)]
---   -- ^ A command followed by a series of assignments
---   | Annotation (AnnSeq v e c) SBool (AnnSeq v e c)
---   -- ^ An initial sequence, followed by an annotation, then another sequence
---   deriving (Show)
-
 --------------------------------------------------------------------------------
---  Combinators
+--  Exposed Functions
 --------------------------------------------------------------------------------
-
-pNot :: PropOn expr Bool -> PropOn expr Bool
-pNot x = EOp (OpNot x)
-
-pAnd :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pAnd x y = EOp (OpAnd x y)
-
-pOr :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pOr x y = EOp (OpOr x y)
-
-pImpl :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pImpl x y = pNot x `pOr` y
 
 -- | If the two variables match in both type and name, return the given
 -- expression. Otherwise, return an expression just containing this variable.
@@ -140,35 +125,10 @@ subVar newExpr (Var targetName) thisVar@(Var thisName) =
     Just Refl | thisName == targetName -> newExpr
     _ -> pureVar thisVar
 
---------------------------------------------------------------------------------
---  Discharging conditions
---------------------------------------------------------------------------------
-
-checkCondition :: (Substitutive expr, HoistOp SBV expr) => PropOn (expr Var) Bool -> Verifier expr Bool
-checkCondition prop = do
+checkProp :: (Substitutive expr, HoistOp SBV expr) => PropOn (expr Var) Bool -> Verifier expr Bool
+checkProp prop = do
   symbolicProp <- propToSBV prop
   liftIO (isTheorem symbolicProp)
-
---------------------------------------------------------------------------------
---  Generating verification conditions
---------------------------------------------------------------------------------
-
--- verifySequence :: (Variable v) =>  (c -> Verifier v ()) -> AnnSeq v e c -> Verifier v ()
--- verifySequence verifyCommand seq = undefined
-
--- addCondition :: SBool -> Verifier v ()
--- addCondition cond = Verifier (varConditions %= (cond :))
-
-assignVC
-  :: forall expr a. (Substitutive expr)
-  => expr Var a -- ^ Expression to substitute in
-  -> Var a -- ^ Variable to substitute for
-  -> PropOn (expr Var) Bool -- ^ Precondition
-  -> PropOn (expr Var) Bool -- ^ Postcondition
-  -> PropOn (expr Var) Bool
-assignVC newExpr targetVar precond postcond =
-  let postcond' = mapOp (bindVars (subVar newExpr targetVar)) postcond
-  in precond `pImpl` postcond'
 
 --------------------------------------------------------------------------------
 --  Internal Functions
@@ -230,7 +190,7 @@ testEval :: Maybe Bool
 testEval = evalOp (mapOp evalOp testProp')
 
 testVerifier :: Verifier (Expr BasicOp) Bool
-testVerifier = checkCondition testProp
+testVerifier = checkProp testProp
 
 test :: IO (Either (VerifierError (Expr BasicOp)) Bool)
 test = runVerifier testVerifier

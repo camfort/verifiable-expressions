@@ -23,7 +23,12 @@ library
                      , Language.While.Prop
                      , Language.While.Pretty
                      , Language.While.Test
-                     , Language.While.Continuity
+
+                     , Language.Verification.Conditions
+                     , Language.Verification
+                     , Language.Verification.Expression
+                     , Language.Verification.Expression.Operators
+                     , Language.Verification.SymClasses
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.9 && <4.10

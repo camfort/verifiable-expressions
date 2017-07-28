@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
 
-module Language.While.Expressions where
+module Language.Verification.Expression where
 
 import           Data.Functor.Compose
 import           Data.Functor.Identity
@@ -69,10 +69,10 @@ data OpChoice ops (t :: * -> *) a where
 
 
 instance Operator (OpChoice '[]) where
-  traverseOp _ x = case x of
+  traverseOp _ x = case x of {}
     -- absurd
 
-  evalOp x = case x of
+  evalOp x = case x of {}
     -- absurd
 
 instance (Operator op, Operator (OpChoice ops)) => Operator (OpChoice (op : ops)) where

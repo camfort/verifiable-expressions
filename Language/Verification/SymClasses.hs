@@ -1,14 +1,11 @@
-{-# LANGUAGE DefaultSignatures      #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 
 {-|
 Type classes from the prelude generalized to work with symbolic values.
@@ -19,7 +16,7 @@ it'll break (TM).
 
 -- TODO: Add instances for remaining types in SBV.
 
-module Language.While.SymClasses
+module Language.Verification.SymClasses
   (
     SymValue(layerSymbolic)
   , SymBool(..)
@@ -43,6 +40,7 @@ errGetSymbolic name msg = error $
   "' with message '" ++ msg ++
   "' Is an instance of a Sym* typeclass missing?"
 
+-- | A type that can be represented by symbolic values.
 class (Typeable a) => SymValue a where
   layerSymbolic :: a -> SBV a
   unsafeGetSymbolic :: String -> SBV a -> a
@@ -81,7 +79,9 @@ transmuteSBV = SBV . unSBV
 --  SymBool
 --------------------------------------------------------------------------------
 
--- | UNSAFE! Never create any new instances!
+-- | Generalized booleans.
+--
+-- This is UNSAFE! Never create any new instances!
 class SymValue b => SymBool b where
   fromBool :: Bool -> b
 
@@ -106,6 +106,8 @@ instance SymBool b => SymBool (SBV b) where
 --  SymEq
 --------------------------------------------------------------------------------
 
+-- | Generalized equality which can return results in the land of generalized
+-- booleans.
 class (SymValue a, SymBool b) => SymEq b a where
   (.==) :: a -> a -> b
 
@@ -123,6 +125,8 @@ instance (SymValue a, SymBool b) => SymEq (SBV b) (SBV a) where
 --  SymOrd
 --------------------------------------------------------------------------------
 
+-- | Generalized ordering which can return results in the land of generalized
+-- booleans.
 class (SymEq b a, SymBool b) => SymOrd b a where
   (.<) :: a -> a -> b
 
@@ -154,6 +158,8 @@ instance (SymOrd b a) => SymOrd (SBV b) (SBV a) where
 --  SymNum
 --------------------------------------------------------------------------------
 
+-- | Generalized numbers that don't have to have all the extra cruft that 'Num'
+-- forces us to have.
 class (SymValue a) => SymNum a where
   (.+) :: a -> a -> a
   (.-) :: a -> a -> a

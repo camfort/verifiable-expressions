@@ -1,27 +1,13 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE PatternSynonyms        #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# OPTIONS_GHC -fno-warn-orphans   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
-module Language.While.Assertions
+module Language.Verification.Expression.Operators
   (
-  -- * Generalized Prelude type classes
-    SymBool(..)
-  , SymEq(..)
-  , SymOrd(..)
-
   -- * Standard operators
-  , BoolOp(..)
+    BoolOp(..)
   , EqOp(..)
   , OrdOp(..)
   , LitOp(..)
@@ -48,9 +34,9 @@ module Language.While.Assertions
 
 import           Data.Functor.Compose
 
-import           Data.SBV                   (SBV)
-import           Language.While.Expressions
-import           Language.While.SymClasses
+import           Data.SBV                         (SBV)
+import           Language.Verification.Expression
+import           Language.Verification.SymClasses
 
 --------------------------------------------------------------------------------
 --  Operators

@@ -46,6 +46,8 @@ data BoolOp t a where
   OpNot :: SymBool b => t b -> BoolOp t b
   OpAnd :: SymBool b => t b -> t b -> BoolOp t b
   OpOr :: SymBool b => t b -> t b -> BoolOp t b
+  OpImpl :: SymBool b => t b -> t b -> BoolOp t b
+  OpEquiv :: SymBool b => t b -> t b -> BoolOp t b
 
 data NumOp t a where
   OpAdd :: SymNum a => t a -> t a -> NumOp t a
@@ -69,11 +71,15 @@ instance Operator BoolOp where
     OpNot x -> OpNot <$> f x
     OpAnd x y -> OpAnd <$> f x <*> f y
     OpOr x y -> OpOr <$> f x <*> f y
+    OpImpl x y -> OpOr <$> f x <*> f y
+    OpEquiv x y -> OpOr <$> f x <*> f y
 
   evalOp = \case
-    OpNot x -> bnot <$> x
-    OpAnd x y -> (.&&) <$> x <*> y
-    OpOr x y -> (.||) <$> x <*> y
+    OpNot x -> symNot <$> x
+    OpAnd x y -> symAnd <$> x <*> y
+    OpOr x y -> symOr <$> x <*> y
+    OpImpl x y -> symImpl <$> x <*> y
+    OpEquiv x y -> symEquiv <$> x <*> y
 
 instance Operator NumOp where
   traverseOp f = \case
@@ -82,9 +88,9 @@ instance Operator NumOp where
     OpMul x y -> OpMul <$> f x <*> f y
 
   evalOp = \case
-    OpAdd x y -> (.+) <$> x <*> y
-    OpSub x y -> (.-) <$> x <*> y
-    OpMul x y -> (.*) <$> x <*> y
+    OpAdd x y -> symAdd <$> x <*> y
+    OpSub x y -> symSub <$> x <*> y
+    OpMul x y -> symMul <$> x <*> y
 
 instance Operator LitOp where
   traverseOp _ = \case
@@ -98,7 +104,7 @@ instance Operator EqOp where
     OpEq x y -> OpEq <$> f x <*> f y
 
   evalOp = \case
-    OpEq x y -> (.==) <$> x <*> y
+    OpEq x y -> symEq <$> x <*> y
 
 instance Operator OrdOp where
   traverseOp f = \case
@@ -108,10 +114,10 @@ instance Operator OrdOp where
     OpGE x y -> OpGE <$> f x <*> f y
 
   evalOp = \case
-    OpLT x y -> (.<) <$> x <*> y
-    OpLE x y -> (.<=) <$> x <*> y
-    OpGT x y -> (.>) <$> x <*> y
-    OpGE x y -> (.>=) <$> x <*> y
+    OpLT x y -> symLt <$> x <*> y
+    OpLE x y -> symLe <$> x <*> y
+    OpGT x y -> symGt <$> x <*> y
+    OpGE x y -> symGe <$> x <*> y
 
 type BasicOp = OpChoice '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
 
@@ -168,6 +174,8 @@ instance HoistOp SBV BoolOp where
     OpNot x -> OpNot (getCompose x)
     OpAnd x y -> OpAnd (getCompose x) (getCompose y)
     OpOr x y -> OpOr (getCompose x) (getCompose y)
+    OpImpl x y -> OpImpl (getCompose x) (getCompose y)
+    OpEquiv x y -> OpEquiv (getCompose x) (getCompose y)
 
 instance HoistOp SBV EqOp where
   hoistOp' = \case

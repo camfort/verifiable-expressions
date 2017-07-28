@@ -1,8 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DeriveDataTypeable        #-}
 {-# LANGUAGE DeriveFunctor             #-}
 {-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE LambdaCase                #-}
@@ -11,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE TypeSynonymInstances      #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
 module Language.Verification
@@ -18,11 +18,13 @@ module Language.Verification
   -- * The verification monad
     Verifier
   , runVerifier
+  , runVerifierWith
   , VerifierError(..)
 
   -- * Verifiable types and variables
   , VerifierSymbol
   , Verifiable
+  , Location(..)
   , Var(..)
 
   -- * Verifier actions
@@ -34,15 +36,17 @@ module Language.Verification
 
 import           Data.Data
 
-import           Control.Lens
+import           Control.Lens                               hiding ((.>))
 import           Control.Monad.Except
 import           Control.Monad.State
+import           Control.Monad.Reader
 
 import           Data.Map                                   (Map)
 import qualified Data.Map                                   as Map
-import           Data.SBV                                   hiding (( # ))
+import           Data.SBV                                   hiding (( # ), (.>))
 
 import           Language.Verification.Expression
+import           Language.Verification.Expression.DSL       hiding (Expr)
 import           Language.Verification.Expression.Operators
 
 --------------------------------------------------------------------------------
@@ -102,12 +106,15 @@ data VerifierError l (expr :: (* -> *) -> * -> *)
 
 data Verifier l expr a =
   Verifier
-  { getVerifier :: StateT (VerifierState l expr) (ExceptT (VerifierError l expr) Symbolic) a
+  { getVerifier :: ReaderT SMTConfig (StateT (VerifierState l expr) (ExceptT (VerifierError l expr) Symbolic)) a
   }
   deriving (Functor)
 
 runVerifier :: Location l => Verifier l expr a -> IO (Either (VerifierError l expr) a)
-runVerifier (Verifier action) = runSMT (runExceptT (evalStateT action vs0))
+runVerifier = runVerifierWith defaultSMTCfg
+
+runVerifierWith :: (Location l) => SMTConfig -> Verifier l expr a -> IO (Either (VerifierError l expr) a)
+runVerifierWith config (Verifier action) = runSMTWith config (runExceptT (evalStateT (runReaderT action config) vs0))
 
 instance Applicative (Verifier l expr) where
   pure = return
@@ -139,7 +146,8 @@ subVar newExpr (Var targetName) thisVar@(Var thisName) =
 checkProp :: (Substitutive expr, HoistOp SBV expr, Location l) => PropOn (expr (Var l)) Bool -> Verifier l expr Bool
 checkProp prop = do
   symbolicProp <- propToSBV prop
-  liftIO (isTheorem symbolicProp)
+  smtConfig <- Verifier ask
+  liftIO (isTheoremWith smtConfig symbolicProp)
 
 --------------------------------------------------------------------------------
 --  Internal Functions
@@ -155,7 +163,7 @@ propToSBV prop = do
   return result
 
 liftSymbolic :: Symbolic a -> Verifier l v a
-liftSymbolic = Verifier . lift . lift
+liftSymbolic = Verifier . lift . lift . lift
 
 symbolVar :: Location l => Var l a -> Verifier l expr (SBV a)
 symbolVar (Var varLoc) = do
@@ -174,17 +182,20 @@ symbolVar (Var varLoc) = do
 --  Tests
 --------------------------------------------------------------------------------
 
+var' :: (SymWord a, Verifiable a) => l -> Expr BasicOp (Var l) a
+var' = var . Var
+
 testExpr1 :: Expr BasicOp (Var String) Integer
-testExpr1 = EOp (EVar (Var "x") `bMul` EOp (bLit 10))
+testExpr1 = var' "x" .* lit 10
 
 testExpr2 :: Expr BasicOp (Var String) Integer
-testExpr2 = EOp (EVar (Var "x") `bMul` EOp (bLit 5))
+testExpr2 = var' "x" .* lit 5
 
 testExpr3 :: Expr BasicOp (Var String) Bool
-testExpr3 = EOp (testExpr1 `bGT` testExpr2)
+testExpr3 = testExpr1 .> testExpr2
 
-testProp :: PropOn (Expr BasicOp (Var String)) Bool
-testProp = EVar testExpr3
+testProp :: Prop (Var String) Bool
+testProp = expr testExpr3
 
 testVarmap :: Map String (VerifierSymbol Identity)
 testVarmap = Map.fromList
@@ -203,5 +214,8 @@ testEval = evalOp (mapOp evalOp testProp')
 testVerifier :: Verifier String (Expr BasicOp) Bool
 testVerifier = checkProp testProp
 
+testConfig :: SMTConfig
+testConfig = defaultSMTCfg { verbose = True }
+
 test :: IO (Either (VerifierError String (Expr BasicOp)) Bool)
-test = runVerifier testVerifier
+test = runVerifierWith testConfig testVerifier

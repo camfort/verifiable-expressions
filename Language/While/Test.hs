@@ -2,13 +2,18 @@
 
 module Language.While.Test where
 
+import           Language.Verification.Expression.Pretty
+import           Language.Verification                      (VerifierError, runVerifierWith)
+import qualified Language.Verification.Expression           as V
+import qualified Language.Verification.Expression.Operators as V
+
 import           Language.While.Hoare
 import           Language.While.Hoare.Prover
-import           Language.While.Pretty
+import           Language.While.Prop
 import           Language.While.Syntax
 import           Language.While.Syntax.Sugar
-import           Language.While.Prop
 
+import Data.SBV (SMTConfig(..), defaultSMTCfg)
 
 testCommand :: Command [Char] a
 testCommand =
@@ -37,8 +42,11 @@ testPostcond =
   PEmbed ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
   PEmbed ("R" .< "Y")
 
-testVcs :: Maybe [WhileProp String]
-testVcs = generateVcs testPrecond testPostcond testCommandAnn
+testConfig :: SMTConfig
+testConfig = defaultSMTCfg { verbose = True }
 
-test :: IO Bool
-test = provePartialHoare testPrecond testPostcond testCommandAnn
+testVcs :: Maybe [VProp String Bool]
+testVcs = generateVCs testPrecond testPostcond testCommandAnn
+
+test :: IO (Either (VerifierError String (V.Expr V.BasicOp)) Bool)
+test = runVerifierWith testConfig $ provePartialHoare testPrecond testPostcond testCommandAnn

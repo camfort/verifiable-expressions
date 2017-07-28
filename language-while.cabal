@@ -27,6 +27,7 @@ library
                      , Language.Verification.Conditions
                      , Language.Verification
                      , Language.Verification.Expression
+                     , Language.Verification.Expression.DSL
                      , Language.Verification.Expression.Operators
                      , Language.Verification.SymClasses
   -- other-modules:       

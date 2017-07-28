@@ -20,7 +20,7 @@ it'll break (TM).
 
 module Language.Verification.SymClasses
   (
-    SymValue(layerSymbolic)
+    SymValue(layerSymbolic, prettyValue, prettyValuePrec)
   , SymBool(..)
   , SymEq(..)
   , SymOrd(..)
@@ -31,7 +31,7 @@ import           Data.Typeable
 import           Control.Applicative
 
 import qualified Data.SBV           as S
-import Data.SBV           hiding (bnot, fromBool, (.==), (.<), (.<=))
+import Data.SBV
 import           Data.SBV.Internals (SBV (..))
 
 --------------------------------------------------------------------------------
@@ -48,9 +48,16 @@ errGetSymbolic name' msg = error $
 class (Typeable a) => SymValue a where
   layerSymbolic :: a -> SBV a
   unsafeGetSymbolic :: String -> SBV a -> a
+  prettyValue :: a -> String
+
+  prettyValuePrec :: Int -> a -> String
+  prettyValuePrec _ = prettyValue
 
   default layerSymbolic :: (Integral a, SymWord a) => a -> SBV a
   layerSymbolic = fromIntegral
+
+  default prettyValue :: Show a => a -> String
+  prettyValue = show
 
 instance SymValue Bool where
   layerSymbolic = S.fromBool
@@ -98,24 +105,30 @@ transmuteSBV = SBV . unSBV
 --
 -- This is UNSAFE! Never create any new instances!
 class SymValue b => SymBool b where
-  fromBool :: Bool -> b
+  symFromBool :: Bool -> b
 
-  (.&&) :: b -> b -> b
-  bnot :: b -> b
+  symAnd :: b -> b -> b
+  symNot :: b -> b
 
-  (.||) :: b -> b -> b
-  a .|| b = bnot (bnot a .&& bnot b)
+  symOr :: b -> b -> b
+  a `symOr` b = symNot (symNot a `symAnd` symNot b)
+
+  symImpl :: b -> b -> b
+  symImpl x y = symNot x `symOr` y
+
+  symEquiv :: b -> b -> b
+  symEquiv x y = (x `symImpl` y) `symAnd` (y `symImpl` x)
 
 instance SymBool Bool where
-  fromBool = id
-  (.&&) = (&&)
-  bnot = not
+  symFromBool = id
+  symAnd = (&&)
+  symNot = not
 
 instance SymBool b => SymBool (SBV b) where
-  fromBool = layerSymbolic . fromBool
+  symFromBool = layerSymbolic . symFromBool
 
-  x .&& y = transmuteSBV (transmuteSBV x S.&&& transmuteSBV y :: SBV Bool)
-  bnot x = transmuteSBV (S.bnot (transmuteSBV x) :: SBV Bool)
+  x `symAnd` y = transmuteSBV (transmuteSBV x S.&&& transmuteSBV y :: SBV Bool)
+  symNot x = transmuteSBV (bnot (transmuteSBV x) :: SBV Bool)
 
 --------------------------------------------------------------------------------
 --  SymEq
@@ -124,17 +137,17 @@ instance SymBool b => SymBool (SBV b) where
 -- | Generalized equality which can return results in the land of generalized
 -- booleans.
 class (SymValue a, SymBool b) => SymEq b a where
-  (.==) :: a -> a -> b
+  symEq :: a -> a -> b
 
-  (./=) :: a -> a -> b
-  x ./= y = bnot (x .== y)
+  symNeq :: a -> a -> b
+  x `symNeq` y = symNot (x `symEq` y)
 
 instance (Eq a, SymValue a) => SymEq Bool a where
-  (.==) = (==)
-  (./=) = (/=)
+  symEq = (==)
+  symNeq = (/=)
 
 instance (SymValue a, SymBool b) => SymEq (SBV b) (SBV a) where
-  x .== y = transmuteSBV (x S..== y)
+  x `symEq` y = transmuteSBV (x S..== y)
 
 --------------------------------------------------------------------------------
 --  SymOrd
@@ -143,26 +156,26 @@ instance (SymValue a, SymBool b) => SymEq (SBV b) (SBV a) where
 -- | Generalized ordering which can return results in the land of generalized
 -- booleans.
 class (SymEq b a, SymBool b) => SymOrd b a where
-  (.<) :: a -> a -> b
+  symLt :: a -> a -> b
 
-  (.<=) :: a -> a -> b
-  x .<= y = (x .< y) .|| (x .== y)
+  symLe :: a -> a -> b
+  symLe x y = (x `symLt` y) `symOr` (x `symEq` y)
 
-  (.>) :: a -> a -> b
-  x .> y = bnot (x .< y)
+  symGt :: a -> a -> b
+  symGt x y = symNot (symLt x y)
 
-  (.>=) :: a -> a -> b
-  x .>= y = bnot (x .<= y)
+  symGe :: a -> a -> b
+  symGe x y = symNot (symLe x y)
 
 instance (Ord a, SymValue a) => SymOrd Bool a where
-  (.<) = (<)
+  symLt = (<)
 
 instance (SymOrd b a) => SymOrd (SBV b) (SBV a) where
   -- See [Note: Typeable]
-  (.<)
+  symLt
     | Just Refl <- eqT :: Maybe (b :~: Bool)
     , Just (BinFunc f) <- findInstance (BinFunc (S..<)) sbvInstances = f
-    | otherwise = unsafeUnderSymbolic "SymOrd <" (.<)
+    | otherwise = unsafeUnderSymbolic "SymOrd <" symLt
 
 --------------------------------------------------------------------------------
 --  SymNum
@@ -171,18 +184,18 @@ instance (SymOrd b a) => SymOrd (SBV b) (SBV a) where
 -- | Generalized numbers that don't have to have all the extra cruft that 'Num'
 -- forces us to have.
 class (SymValue a) => SymNum a where
-  (.+) :: a -> a -> a
-  (.-) :: a -> a -> a
-  (.*) :: a -> a -> a
+  symAdd :: a -> a -> a
+  symSub :: a -> a -> a
+  symMul :: a -> a -> a
 
-  default (.+) :: (Num a) => a -> a -> a
-  (.+) = (+)
+  default symAdd :: (Num a) => a -> a -> a
+  symAdd = (+)
 
-  default (.-) :: (Num a) => a -> a -> a
-  (.-) = (-)
+  default symSub :: (Num a) => a -> a -> a
+  symSub = (-)
 
-  default (.*) :: (Num a) => a -> a -> a
-  (.*) = (*)
+  default symMul :: (Num a) => a -> a -> a
+  symMul = (*)
 
 -- TODO: Add instances for everything that's 'Num' in base.
 
@@ -210,9 +223,9 @@ tryNumTypes f backup
   | otherwise = backup
 
 instance (SymNum a) => SymNum (SBV a) where
-  (.+) = tryNumTypes (+) (unsafeUnderSymbolic "SymNum +" (.+))
-  (.-) = tryNumTypes (-) (unsafeUnderSymbolic "SymNum -" (.-))
-  (.*) = tryNumTypes (*) (unsafeUnderSymbolic "SymNum *" (.*))
+  symAdd = tryNumTypes (+) (unsafeUnderSymbolic "SymNum +" symAdd)
+  symSub = tryNumTypes (-) (unsafeUnderSymbolic "SymNum -" symSub)
+  symMul = tryNumTypes (*) (unsafeUnderSymbolic "SymNum *" symMul)
 
 {- [NOTE: Typeable]
 

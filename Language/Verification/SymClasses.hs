@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -14,7 +16,7 @@ Some of this is a hack that relies on the internals of SBV, but I don't think
 it'll break (TM).
 -}
 
--- TODO: Add instances for remaining types in SBV.
+-- TODO: Add remaining symbolic classes from SBV
 
 module Language.Verification.SymClasses
   (
@@ -26,8 +28,10 @@ module Language.Verification.SymClasses
   ) where
 
 import           Data.Typeable
+import           Control.Applicative
 
 import qualified Data.SBV           as S
+import Data.SBV           hiding (bnot, fromBool, (.==), (.<), (.<=))
 import           Data.SBV.Internals (SBV (..))
 
 --------------------------------------------------------------------------------
@@ -35,8 +39,8 @@ import           Data.SBV.Internals (SBV (..))
 --------------------------------------------------------------------------------
 
 errGetSymbolic :: String -> String -> a
-errGetSymbolic name msg = error $
-  "Can't get a value out of '" ++ name ++
+errGetSymbolic name' msg = error $
+  "Can't get a value out of '" ++ name' ++
   "' with message '" ++ msg ++
   "' Is an instance of a Sym* typeclass missing?"
 
@@ -45,12 +49,14 @@ class (Typeable a) => SymValue a where
   layerSymbolic :: a -> SBV a
   unsafeGetSymbolic :: String -> SBV a -> a
 
+  default layerSymbolic :: (Integral a, SymWord a) => a -> SBV a
+  layerSymbolic = fromIntegral
+
 instance SymValue Bool where
   layerSymbolic = S.fromBool
   unsafeGetSymbolic = errGetSymbolic "SBool"
 
 instance SymValue Integer where
-  layerSymbolic = fromIntegral
   unsafeGetSymbolic = errGetSymbolic "SInteger"
 
 instance SymValue Float where
@@ -61,13 +67,22 @@ instance SymValue Double where
   layerSymbolic = error "Define this!"
   unsafeGetSymbolic = errGetSymbolic "SDouble"
 
-instance SymValue S.AlgReal where
+instance SymValue AlgReal where
   layerSymbolic = error "Define this!"
   unsafeGetSymbolic = errGetSymbolic "SReal"
 
 instance SymValue a => SymValue (SBV a) where
   layerSymbolic = transmuteSBV
   unsafeGetSymbolic _ = transmuteSBV
+
+instance SymValue Word8  where unsafeGetSymbolic = errGetSymbolic "SWord8"
+instance SymValue Word16 where unsafeGetSymbolic = errGetSymbolic "SWord16"
+instance SymValue Word32 where unsafeGetSymbolic = errGetSymbolic "SWord32"
+instance SymValue Word64 where unsafeGetSymbolic = errGetSymbolic "SWord64"
+instance SymValue Int8   where unsafeGetSymbolic = errGetSymbolic "SInt8"
+instance SymValue Int16  where unsafeGetSymbolic = errGetSymbolic "SInt16"
+instance SymValue Int32  where unsafeGetSymbolic = errGetSymbolic "SInt32"
+instance SymValue Int64  where unsafeGetSymbolic = errGetSymbolic "SInt64"
 
 unsafeUnderSymbolic :: (SymValue a, SymValue b, SymValue c) => String -> (a -> b -> c) -> SBV a -> SBV b -> SBV c
 unsafeUnderSymbolic msg f x y = layerSymbolic (unsafeGetSymbolic msg x `f` unsafeGetSymbolic msg y)
@@ -145,13 +160,8 @@ instance (Ord a, SymValue a) => SymOrd Bool a where
 instance (SymOrd b a) => SymOrd (SBV b) (SBV a) where
   -- See [Note: Typeable]
   (.<)
-    | Just Refl <- eqT :: Maybe (b :~: Bool) =
-        case () of
-          _ | Just Refl <- (eqT :: Maybe (a :~: Integer))   -> (S..<)
-            | Just Refl <- (eqT :: Maybe (a :~: Float))     -> (S..<)
-            | Just Refl <- (eqT :: Maybe (a :~: Double))    -> (S..<)
-            | Just Refl <- (eqT :: Maybe (a :~: S.AlgReal)) -> (S..<)
-          _ -> unsafeUnderSymbolic "SymOrd <" (.<)
+    | Just Refl <- eqT :: Maybe (b :~: Bool)
+    , Just (BinFunc f) <- findInstance (BinFunc (S..<)) sbvInstances = f
     | otherwise = unsafeUnderSymbolic "SymOrd <" (.<)
 
 --------------------------------------------------------------------------------
@@ -180,18 +190,23 @@ instance SymNum Integer
 instance SymNum Float
 instance SymNum Double
 instance SymNum S.AlgReal
+instance SymNum Word8
+instance SymNum Word16
+instance SymNum Word32
+instance SymNum Word64
+instance SymNum Int8
+instance SymNum Int16
+instance SymNum Int32
+instance SymNum Int64
 
 -- See [Note: Typeable]
 tryNumTypes
-  :: forall a c. (Typeable a)
-  => (forall b. (Num b, S.SymWord b, Typeable b) => c b -> c b -> c b)
-  -> (c a -> c a -> c a)
-  -> (c a -> c a -> c a)
+  :: (Typeable a)
+  => (forall b. (Num b) => b -> b -> b)
+  -> (a -> a -> a)
+  -> (a -> a -> a)
 tryNumTypes f backup
-  | Just Refl <- (eqT :: Maybe (a :~: Integer))   = f
-  | Just Refl <- (eqT :: Maybe (a :~: Float))     = f
-  | Just Refl <- (eqT :: Maybe (a :~: Double))    = f
-  | Just Refl <- (eqT :: Maybe (a :~: S.AlgReal)) = f
+  | Just (MonoFunc g) <- findInstance (MonoFunc f) sbvInstances = g
   | otherwise = backup
 
 instance (SymNum a) => SymNum (SBV a) where
@@ -234,3 +249,48 @@ does in fact define the relevant function for, that function is used. Otherwise,
 we fall back to the dirty hacks.
 
 -}
+
+--------------------------------------------------------------------------------
+--  Constraint Machinery
+--------------------------------------------------------------------------------
+
+class (S.OrdSymbolic a, Num a) => SBVNumeric a
+instance (S.OrdSymbolic a, Num a) => SBVNumeric a
+
+-- This is a list of reified instances of 'SBVNumeric'. It's used when
+-- dynamically selecting instances to use (see [Note: Typeable]).
+-- TODO: Can we use a Map indexed by 'TypeRep's to speed up the lookup?
+sbvInstances :: [ExistsDict SBVNumeric]
+sbvInstances =
+  [ Ex (Proxy :: Proxy SInteger)
+  , Ex (Proxy :: Proxy SFloat)
+  , Ex (Proxy :: Proxy SDouble)
+  , Ex (Proxy :: Proxy SReal)
+  , Ex (Proxy :: Proxy SWord8)
+  , Ex (Proxy :: Proxy SWord16)
+  , Ex (Proxy :: Proxy SWord32)
+  , Ex (Proxy :: Proxy SWord64)
+  , Ex (Proxy :: Proxy SInt8)
+  , Ex (Proxy :: Proxy SInt16)
+  , Ex (Proxy :: Proxy SInt32)
+  , Ex (Proxy :: Proxy SInt64)
+  ]
+
+data ExistsDict p where
+  Ex :: (Typeable a, p a) => Proxy a -> ExistsDict p
+
+findInstance :: forall b p f. Typeable b => (forall a. (p a) => f a) -> [ExistsDict p] -> Maybe (f b)
+findInstance f = findFirst unpack
+  where
+    findFirst :: (x -> Maybe y) -> [x] -> Maybe y
+    findFirst _ [] = Nothing
+    findFirst g (x : xs) = g x <|> findFirst g xs
+
+    unpack :: ExistsDict p -> Maybe (f b)
+    unpack (Ex (_ :: Proxy a)) =
+      case eqT :: Maybe (a :~: b) of
+        Just Refl -> Just f
+        Nothing -> Nothing
+
+newtype BinFunc b a = BinFunc (a -> a -> b)
+newtype MonoFunc a = MonoFunc (a -> a -> a)

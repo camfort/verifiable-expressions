@@ -1,17 +1,24 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+
 module Language.Verification.Test where
+
+import           Control.Lens
+import           Data.Functor.Identity
 
 import           Data.Map                                   (Map)
 import qualified Data.Map                                   as Map
-import           Data.SBV                                   hiding (( # ), OrdSymbolic(..))
+import           Data.SBV                                   hiding
+                                                             (OrdSymbolic (..),
+                                                             ( # ))
 
 import           Language.Verification
 import           Language.Verification.Expression
-import           Language.Verification.Expression.Pretty
 import           Language.Verification.Expression.DSL       hiding (Expr)
 import           Language.Verification.Expression.Operators
+import           Language.Verification.Expression.Pretty
 
 --------------------------------------------------------------------------------
---  Tests
+--  Test expression and propositions
 --------------------------------------------------------------------------------
 
 var' :: (SymWord a, Verifiable a) => l -> Expr op (Var l) a
@@ -31,9 +38,26 @@ testExpr3 = testExpr1 .<= testExpr2
 testProp :: Prop (Var String) Bool
 testProp = expr testExpr3
 
+--------------------------------------------------------------------------------
+--  Testing interaction with the verifier
+--------------------------------------------------------------------------------
+
+testVerifier :: Verifier String (Expr BasicOp) Bool
+testVerifier = query $ checkProp testProp
+
+testConfig :: SMTConfig
+testConfig = defaultSMTCfg { verbose = True }
+
+test :: IO (Either (VerifierError String (Expr BasicOp)) Bool)
+test = runVerifierWith testConfig testVerifier
+
+--------------------------------------------------------------------------------
+--  Testing pure evaluation
+--------------------------------------------------------------------------------
+
 testVarmap :: Map String (VerifierSymbol Identity)
 testVarmap = Map.fromList
-  [ ("x", VSInteger 5)
+  [ ("x", _Symbol # (5 :: Identity Integer))
   ]
 
 testGetVar :: (Var String) a -> Maybe a
@@ -44,12 +68,3 @@ testProp' = hmapOp (hmapOp testGetVar) testProp
 
 testEval :: Maybe Bool
 testEval = evalOp (hmapOp evalOp testProp')
-
-testVerifier :: Verifier String (Expr BasicOp) Bool
-testVerifier = checkProp testProp
-
-testConfig :: SMTConfig
-testConfig = defaultSMTCfg { verbose = True }
-
-test :: IO (Either (VerifierError String (Expr BasicOp)) Bool)
-test = runVerifierWith testConfig testVerifier

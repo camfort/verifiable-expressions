@@ -14,7 +14,6 @@
 
 module Language.Verification.Expression where
 
-import           Control.Monad ((<=<))
 import           Data.Functor.Compose
 import           Data.Functor.Identity
 

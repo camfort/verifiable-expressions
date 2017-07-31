@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable        #-}
-{-# LANGUAGE DeriveFunctor             #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving#-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE GADTs                     #-}
@@ -25,9 +25,13 @@ module Language.Verification
   , runVerifierWith
   , VerifierError(..)
 
+  -- * The query monad
+  , Query
+  , query
+
   -- * Verifiable types and variables
   , VerifierSymbol
-  , Verifiable
+  , Verifiable(..)
   , Location(..)
   , Var(..)
 
@@ -47,13 +51,13 @@ import           Control.Monad.Reader
 
 import           Data.Map                                   (Map)
 import           Data.SBV                                   hiding (( # ), OrdSymbolic(..))
-import           Data.SBV.Control
+import qualified Data.SBV.Control as S
 
 import           Language.Verification.Expression
 import           Language.Verification.Expression.Operators
 
 --------------------------------------------------------------------------------
---  Verifiable
+--  Verifiable Types
 --------------------------------------------------------------------------------
 
 data VerifierSymbol f
@@ -76,21 +80,7 @@ instance Verifiable AlgReal where
   _Symbol = _VSReal
 
 --------------------------------------------------------------------------------
---  Internal Types
---------------------------------------------------------------------------------
-
-data VerifierState l (expr :: (* -> *) -> * -> *) =
-  VerifierState
-  { _varSymbols    :: Map l (VerifierSymbol SBV)
-  }
-
-makeLenses ''VerifierState
-
-vs0 :: Location l => VerifierState l expr
-vs0 = VerifierState mempty
-
---------------------------------------------------------------------------------
---  Exposed Types
+--  Variables
 --------------------------------------------------------------------------------
 
 class (Ord l) => Location l where
@@ -102,37 +92,62 @@ instance Location String where locationName = id
 data Var l a where
   Var :: (SymWord a, Verifiable a) => l -> Var l a
 
+--------------------------------------------------------------------------------
+--  Verifier Monad
+--------------------------------------------------------------------------------
+
 data VerifierError l (expr :: (* -> *) -> * -> *)
   = VEMismatchedSymbolType l
   -- ^ The same variable was used for two different symbol types
   deriving (Show, Eq, Ord, Data, Typeable)
 
-data Verifier l expr a =
+newtype Verifier l expr a =
   Verifier
-  { getVerifier :: ReaderT SMTConfig (StateT (VerifierState l expr) (ExceptT (VerifierError l expr) Symbolic)) a
+  { getVerifier ::
+      ReaderT SMTConfig (
+        ExceptT (VerifierError l expr)
+          IO) a
   }
-  deriving (Functor)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader SMTConfig, MonadError (VerifierError l expr))
+
+runVerifierWith
+  :: (Location l)
+  => SMTConfig
+  -> Verifier l expr a
+  -> IO (Either (VerifierError l expr) a)
+runVerifierWith config (Verifier action) = runExceptT (runReaderT action config)
 
 runVerifier :: Location l => Verifier l expr a -> IO (Either (VerifierError l expr) a)
 runVerifier = runVerifierWith defaultSMTCfg
 
-runVerifierWith :: (Location l) => SMTConfig -> Verifier l expr a -> IO (Either (VerifierError l expr) a)
-runVerifierWith config (Verifier action) = runSMTWith config (runExceptT (evalStateT (runReaderT action config) vs0))
+--------------------------------------------------------------------------------
+--  Query Monad
+--------------------------------------------------------------------------------
 
-instance Applicative (Verifier l expr) where
-  pure = return
-  (<*>) = ap
+data QueryState l (expr :: (* -> *) -> * -> *) =
+  QueryState
+  { _varSymbols    :: Map l (VerifierSymbol SBV)
+  }
 
-instance Monad (Verifier l expr) where
-  return = Verifier . return
+makeLenses ''QueryState
 
-  Verifier x >>= f = Verifier (x >>= getVerifier . f)
+qs0 :: Ord l => QueryState l expr
+qs0 = QueryState mempty
 
-instance MonadIO (Verifier l expr) where
-  liftIO = Verifier . liftIO
+newtype Query l expr a =
+  Query
+  { getQuery :: StateT (QueryState l expr) (ExceptT (VerifierError l expr) Symbolic) a
+  }
+  deriving (Functor, Applicative, Monad, MonadState (QueryState l expr), MonadError (VerifierError l expr))
+
+query :: (Location l) => Query l expr a -> Verifier l expr a
+query (Query action) =
+  do cfg <- ask
+     r <- liftIO (runSMTWith cfg (runExceptT (evalStateT action qs0)))
+     either throwError return r
 
 --------------------------------------------------------------------------------
---  Exposed Functions
+--  Combinators
 --------------------------------------------------------------------------------
 
 -- | If the two variables match in both type and name, return the given
@@ -140,29 +155,44 @@ instance MonadIO (Verifier l expr) where
 --
 -- This is substitution into an expression, where the old expression is just a
 -- variable.
-subVar :: forall expr a b l. (Substitutive expr, Eq l) => expr (Var l) a -> Var l a -> Var l b -> expr (Var l) b
+subVar
+  :: forall expr a b l. (Substitutive expr, Eq l)
+  => expr (Var l) a
+  -> Var l a
+  -> Var l b
+  -> expr (Var l) b
 subVar newExpr (Var targetName) thisVar@(Var thisName) =
   case eqT :: Maybe (a :~: b) of
     Just Refl | thisName == targetName -> newExpr
     _ -> pureVar thisVar
 
-checkProp :: (Substitutive expr, HoistOp SBV expr, Location l) => PropOn (expr (Var l)) Bool -> Verifier l expr Bool
+--------------------------------------------------------------------------------
+--  Query actions
+--------------------------------------------------------------------------------
+
+checkProp
+  :: (Substitutive expr, HoistOp SBV expr, Location l)
+  => PropOn (expr (Var l)) Bool
+  -> Query l expr Bool
 checkProp prop = do
   symbolicProp <- propToSBV prop
   -- cfg <- Verifier ask
   -- liftIO (isTheoremWith cfg symbolicProp)
-  liftSymbolic . query $ do
+  liftSymbolic . S.query $ do
     constrain (bnot symbolicProp)
-    cs <- checkSat
+    cs <- S.checkSat
     case cs of
-      Unsat -> return True
+      S.Unsat -> return True
       _ -> return False
 
 --------------------------------------------------------------------------------
 --  Internal Functions
 --------------------------------------------------------------------------------
 
-propToSBV :: (Substitutive expr, HoistOp SBV expr, Location l) => PropOn (expr (Var l)) Bool -> Verifier l expr SBool
+propToSBV
+  :: (Substitutive expr, HoistOp SBV expr, Location l)
+  => PropOn (expr (Var l)) Bool
+  -> Query l expr SBool
 propToSBV prop = do
   propWithSymbols <- htraverseOp (htraverseOp symbolVar) prop
 
@@ -171,18 +201,18 @@ propToSBV prop = do
 
   return result
 
-liftSymbolic :: Symbolic a -> Verifier l v a
-liftSymbolic = Verifier . lift . lift . lift
+liftSymbolic :: Symbolic a -> Query l v a
+liftSymbolic = Query . lift . lift
 
-symbolVar :: Location l => Var l a -> Verifier l expr (SBV a)
+symbolVar :: Location l => Var l a -> Query l expr (SBV a)
 symbolVar (Var varLoc) = do
-  storedSymbol <- Verifier $ use (varSymbols . at varLoc)
+  storedSymbol <- Query $ use (varSymbols . at varLoc)
 
   case storedSymbol of
-    Just s -> maybe (Verifier $ throwError (VEMismatchedSymbolType varLoc))
+    Just s -> maybe (throwError (VEMismatchedSymbolType varLoc))
               return
               (s ^? _Symbol)
     Nothing -> do
       newSymbol <- liftSymbolic (symbolic (locationName varLoc))
-      Verifier $ varSymbols . at varLoc .= Just (_Symbol # newSymbol)
+      varSymbols . at varLoc .= Just (_Symbol # newSymbol)
       return newSymbol

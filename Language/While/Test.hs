@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 module Language.While.Test where
 
 import           Language.Verification.Expression.Pretty
-import           Language.Verification                      (VerifierError, runVerifierWith)
+import           Language.Verification
 import qualified Language.Verification.Expression           as V
 import qualified Language.Verification.Expression.Operators as V
 
@@ -43,11 +44,12 @@ testPostcond =
   PEmbed ("R" .< "Y")
 
 testConfig :: SMTConfig
-testConfig = defaultSMTCfg { verbose = True }
+testConfig = defaultSMTCfg
 
 testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
 test :: IO (Either (VerifierError String (V.Expr V.BasicOp)) Bool)
 test = runVerifierWith testConfig $ do
-  provePartialHoare testPrecond testPostcond testCommandAnn
+  query $ do
+    checkPartialHoare testPrecond testPostcond testCommandAnn

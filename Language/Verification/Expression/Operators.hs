@@ -32,8 +32,6 @@ module Language.Verification.Expression.Operators
   , bGE
   ) where
 
-import           Data.Functor.Compose
-
 import           Data.SBV                         (SBV)
 import           Language.Verification.Expression
 import           Language.Verification.SymClasses

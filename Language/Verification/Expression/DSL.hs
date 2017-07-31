@@ -168,10 +168,10 @@ pnot = EOp . OpNot
 (*||) = EOp ... OpOr
 
 (*->) :: SymBool b => Prop v b -> Prop v b -> Prop v b
-(*->) x y = pnot x *|| y
+(*->) = EOp ... OpImpl
 
 (*<->) :: SymBool b => Prop v b -> Prop v b -> Prop v b
-(*<->) x y = (x *-> y) *&& (y *-> x)
+(*<->) = EOp ... OpEquiv
 
 --------------------------------------------------------------------------------
 --  Internal Combinators

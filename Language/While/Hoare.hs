@@ -62,7 +62,7 @@ translateBexpr = \case
 --  Translating propositions over WHILE
 --------------------------------------------------------------------------------
 
-type VProp l a = VD.Prop (V.Var l) a
+type VProp l a = VD.Prop' (V.Var l) a
 
 translatePropOp :: PropOp (VProp l Bool) -> VProp l Bool
 translatePropOp = \case

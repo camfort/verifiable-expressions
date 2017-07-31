@@ -35,7 +35,7 @@ testExpr3 = testExpr1 .<= testExpr2
 
 -- TODO: This is apparently not a theorem. Investigate!
 
-testProp :: Prop (Var String) Bool
+testProp :: Prop' (Var String) Bool
 testProp = expr testExpr3
 
 --------------------------------------------------------------------------------

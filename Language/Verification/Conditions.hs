@@ -22,11 +22,6 @@ module Language.Verification.Conditions
   , whileVCs
 
   -- * Combinators
-  , pNot
-  , pAnd
-  , pOr
-  , pImpl
-  , pIff
   , subAssignment
   , chainSub
   , joinAnn
@@ -35,6 +30,7 @@ module Language.Verification.Conditions
 import           Language.Verification
 import           Language.Verification.Expression
 import           Language.Verification.Expression.Operators
+import           Language.Verification.Expression.DSL hiding (Prop)
 
 
 --------------------------------------------------------------------------------
@@ -61,22 +57,6 @@ data AnnSeq expr var cmd
 --------------------------------------------------------------------------------
 --  Combinators
 --------------------------------------------------------------------------------
-
-pNot :: PropOn expr Bool -> PropOn expr Bool
-pNot x = EOp (OpNot x)
-
-pAnd :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pAnd x y = EOp (OpAnd x y)
-
-pOr :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pOr x y = EOp (OpOr x y)
-
-pImpl :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pImpl x y = pNot x `pOr` y
-
-pIff :: PropOn expr Bool -> PropOn expr Bool -> PropOn expr Bool
-pIff x y = (x `pImpl` y) `pAnd` (y `pImpl` x)
-
 
 -- | Substitutes variables in the given proposition based on the given
 -- assignment.
@@ -117,7 +97,7 @@ type GenVCs f expr var a = Prop expr var -> Prop expr var -> a -> f [Prop expr v
 skipVCs
   :: (Substitutive expr, Applicative f)
   => GenVCs f expr (Var l) ()
-skipVCs precond postcond () = pure [precond `pImpl` postcond]
+skipVCs precond postcond () = pure [precond *-> postcond]
 
 
 -- | Generates verification conditions for an assignment.
@@ -126,7 +106,7 @@ assignVCs
   => GenVCs f expr (Var l) (Assignment expr (Var l))
 assignVCs precond postcond assignment =
   let postcond' = subAssignment assignment postcond
-  in pure [precond `pImpl` postcond']
+  in pure [precond *-> postcond']
 
 
 -- | Generates verification conditions for a sequence of commands.
@@ -140,7 +120,7 @@ sequenceVCs cmdVCs precond postcond annSeq =
     -- implies the postcondition, after substitutions are performed by the
     -- assignments.
     JustAssign as ->
-      pure [precond `pImpl` chainSub postcond as]
+      pure [precond *-> chainSub postcond as]
 
     -- A command followed by a sequence of assignments can be verified by
     -- substituting based on the assignments in the postcondition, then verifying
@@ -163,8 +143,8 @@ ifVCs
   -> GenVCs f expr (Var l) (cond, cmd, cmd)
 ifVCs cmdVCs condToProp precond postcond (cond, cmd1, cmd2) =
   let condProp = condToProp cond
-  in (++) <$> cmdVCs (precond `pAnd` condProp) postcond cmd1
-          <*> cmdVCs (precond `pAnd` pNot condProp) postcond cmd2
+  in (++) <$> cmdVCs (precond *&& condProp) postcond cmd1
+          <*> cmdVCs (precond *&& pnot condProp) postcond cmd2
 
 
 -- | Generates verification conditions for a while loop.
@@ -176,7 +156,6 @@ whileVCs
   -> GenVCs f expr (Var l) (cond, cmd)
 whileVCs cmdVCs condToProp invariant precond postcond (cond, body) =
   let condProp = condToProp cond
-      invariantMaintained = cmdVCs (invariant `pAnd` condProp) invariant body
-      invariantWorks = [precond `pImpl` invariant, (invariant `pAnd` pNot condProp) `pImpl` postcond]
+      invariantMaintained = cmdVCs (invariant *&& condProp) invariant body
+      invariantWorks = [precond *-> invariant, (invariant *&& pnot condProp) *-> postcond]
   in (invariantWorks ++) <$> invariantMaintained
-

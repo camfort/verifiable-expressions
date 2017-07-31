@@ -5,6 +5,7 @@ module Language.Verification.Expression.DSL
   -- * Types
     Expr
   , Prop
+  , Prop'
   -- * Lifting
   , var
   , expr
@@ -49,7 +50,9 @@ import           Language.Verification.SymClasses           as Classes
 type Expr v a = E.Expr BasicOp v a
 
 -- | Propositions over expressions
-type Prop v a = E.Expr BoolOp (E.Expr BasicOp v) a
+type Prop expr a = E.Expr BoolOp expr a
+
+type Prop' v a = E.Expr BoolOp (E.Expr BasicOp v) a
 
 --------------------------------------------------------------------------------
 --  Lifting
@@ -60,7 +63,7 @@ var :: v a -> E.Expr op v a
 var = EVar
 
 -- | Lift an expression into the land of propositions.
-expr :: Expr v a -> Prop v a
+expr :: expr a -> Prop expr a
 expr = EVar
 
 --------------------------------------------------------------------------------
@@ -155,22 +158,22 @@ infixl 2 *||
 infixr 1 *->
 infix 1 *<->
 
-plit :: SymBool b => b -> Prop v b
+plit :: SymBool b => b -> Prop (E.Expr BasicOp v) b
 plit = expr . lit
 
-pnot :: SymBool b => Prop v b -> Prop v b
+pnot :: SymBool b => Prop expr b -> Prop expr b
 pnot = EOp . OpNot
 
-(*&&) :: SymBool b => Prop v b -> Prop v b -> Prop v b
+(*&&) :: SymBool b => Prop expr b -> Prop expr b -> Prop expr b
 (*&&) = EOp ... OpAnd
 
-(*||) :: SymBool b => Prop v b -> Prop v b -> Prop v b
+(*||) :: SymBool b => Prop expr b -> Prop expr b -> Prop expr b
 (*||) = EOp ... OpOr
 
-(*->) :: SymBool b => Prop v b -> Prop v b -> Prop v b
+(*->) :: SymBool b => Prop expr b -> Prop expr b -> Prop expr b
 (*->) = EOp ... OpImpl
 
-(*<->) :: SymBool b => Prop v b -> Prop v b -> Prop v b
+(*<->) :: SymBool b => Prop expr b -> Prop expr b -> Prop expr b
 (*<->) = EOp ... OpEquiv
 
 --------------------------------------------------------------------------------

@@ -18,18 +18,6 @@ module Language.Verification.Expression.Operators
 
   -- * Basic Operators
   , BasicOp
-  , bLit
-  , bNot
-  , bAnd
-  , bOr
-  , bAdd
-  , bSub
-  , bMul
-  , bEq
-  , bLT
-  , bLE
-  , bGT
-  , bGE
   ) where
 
 import           Data.SBV                         (SBV)
@@ -118,42 +106,6 @@ instance Operator OrdOp where
     OpGE x y -> symGe <$> x <*> y
 
 type BasicOp = OpChoice '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
-
-bLit :: SymValue a => a -> BasicOp t a
-bLit x = Op0 (OpLit x)
-
-bNot :: SymBool a => t a -> BasicOp t a
-bNot x = Op1 (OpNot x)
-
-bAnd :: SymBool a => t a -> t a -> BasicOp t a
-bAnd x y = Op1 (OpAnd x y)
-
-bOr :: SymBool a => t a -> t a -> BasicOp t a
-bOr x y = Op1 (OpOr x y)
-
-bAdd :: SymNum a => t a -> t a -> BasicOp t a
-bAdd x y = Op2 (OpAdd x y)
-
-bSub :: SymNum a => t a -> t a -> BasicOp t a
-bSub x y = Op2 (OpSub x y)
-
-bMul :: SymNum a => t a -> t a -> BasicOp t a
-bMul x y = Op2 (OpMul x y)
-
-bEq :: SymEq b a => t a -> t a -> BasicOp t b
-bEq x y = Op3 (OpEq x y)
-
-bLT :: SymOrd b a => t a -> t a -> BasicOp t b
-bLT x y = Op4 (OpLT x y)
-
-bLE :: SymOrd b a => t a -> t a -> BasicOp t b
-bLE x y = Op4 (OpLE x y)
-
-bGT :: SymOrd b a => t a -> t a -> BasicOp t b
-bGT x y = Op4 (OpGT x y)
-
-bGE :: SymOrd b a => t a -> t a -> BasicOp t b
-bGE x y = Op4 (OpGE x y)
 
 --------------------------------------------------------------------------------
 --  Expressions

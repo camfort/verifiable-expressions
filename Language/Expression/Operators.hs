@@ -15,11 +15,8 @@ module Language.Expression.Operators
   , LitOp(..)
   , NumOp(..)
 
-  -- * Propositions
-  , PropOn
-
-  -- * Basic Operators
-  , BasicOp
+  -- * Standard Operators
+  , StandardOps
 
   -- * Evaluating purely
   , PureEval(..)
@@ -129,15 +126,8 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) OrdOp where
     OpGT x y -> liftA2' f symGt x y
     OpGE x y -> liftA2' f symGe x y
 
-type BasicOp = OpChoice '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
-
---------------------------------------------------------------------------------
---  Expressions
---------------------------------------------------------------------------------
-
--- | @'PropOn' expr a@ is the type of @a@-valued propositions over expressions
--- of type @expr@.
-type PropOn = Expr BoolOp
+-- | A type-level list of standard operators.
+type StandardOps = '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
 
 --------------------------------------------------------------------------------
 --  Combinators

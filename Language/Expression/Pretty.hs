@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
@@ -108,6 +109,9 @@ instance (Pretty2 op, Operator op) => Pretty2 (Expr op) where
   pretty2Prec p = \case
     EVar x -> pretty1Prec p x
     EOp op -> pretty2Prec p $ hmapOp (Const . pretty2Prec p) op
+
+instance (Pretty2 (OpChoice ops), Operator (OpChoice ops)) => Pretty2 (Expr' ops) where
+  pretty2Prec p = pretty2Prec p . getExpr'
 
 instance (Pretty2 (OpChoice '[])) where
   pretty2 x = case x of

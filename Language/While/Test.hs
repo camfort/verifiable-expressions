@@ -3,10 +3,10 @@
 
 module Language.While.Test where
 
-import           Language.Expression.Pretty
-import           Language.Verification
 import qualified Language.Expression           as V
 import qualified Language.Expression.Operators as V
+import           Language.Expression.Pretty
+import           Language.Verification
 
 import           Language.While.Hoare
 import           Language.While.Hoare.Prover
@@ -14,42 +14,32 @@ import           Language.While.Prop
 import           Language.While.Syntax
 import           Language.While.Syntax.Sugar
 
-import Data.SBV (SMTConfig(..), defaultSMTCfg)
-
-testCommand :: Command [Char] a
-testCommand =
-  "R" .=. "X" \\
-  "Q" .=. 0   \\
-  CWhile ("Y" .<= "R")
-  (  "R" .=. "R" - "Y"
-  \\ "Q" .=. "Q" + 1
-  )
+import           Data.SBV                      (SMTConfig (..), defaultSMTCfg)
 
 testCommandAnn :: Command String (PropAnn String ())
 testCommandAnn =
-  "R" .=. "X" \\
-  "Q" .=. 0   \\ (PEmbed ("R" `BEq` "X") `PAnd` PEmbed ("Q" `BEq` 0)) ^^^
+  "Q" .=. 0   \\ (PEmbed ("R" `BEq` "x") `PAnd` PEmbed ("Q" `BEq` 0)) ^^^
   CWhile ("Y" .<= "R")
-  ((PEmbed ("X" `BEq` ("R" + "Y" * "Q"))) ^^^
+  ((PEmbed ("x" `BEq` ("R" + "Y" * "Q"))) ^^^
    (  "R" .=. "R" - "Y"
    \\ "Q" .=. "Q" + 1
    ))
 
-testPrecond :: WhileProp l
-testPrecond = PLit True
+testPrecond :: WhileProp String
+testPrecond = PEmbed ("R" `BEq` "x")
 
 testPostcond :: WhileProp String
 testPostcond =
-  PEmbed ("X" `BEq` ("R" + "Y" * "Q")) `PAnd`
+  PEmbed ("x" `BEq` ("R" + "Y" * "Q")) `PAnd`
   PEmbed ("R" .< "Y")
 
 testConfig :: SMTConfig
-testConfig = defaultSMTCfg
+testConfig = defaultSMTCfg { verbose = True }
 
 testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
-test :: IO (Either (VerifierError String (V.Expr V.BasicOp)) Bool)
+test :: IO (Either (VerifierError String (V.Expr' V.StandardOps)) Bool)
 test = runVerifierWith testConfig $ do
   query $ do
     checkPartialHoare testPrecond testPostcond testCommandAnn

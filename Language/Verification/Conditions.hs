@@ -29,7 +29,6 @@ module Language.Verification.Conditions
 
 import           Language.Verification
 import           Language.Expression
-import           Language.Expression.Operators
 import           Language.Expression.DSL hiding (Prop)
 
 
@@ -38,7 +37,7 @@ import           Language.Expression.DSL hiding (Prop)
 --------------------------------------------------------------------------------
 
 -- | A proposition over expressions in the language.
-type Prop (expr :: (* -> *) -> * -> *) var = PropOn (expr var) Bool
+type Prop (expr :: (* -> *) -> * -> *) var = PropOver (expr var) Bool
 
 -- | An assignment of a particular expression to a particular variable.
 data Assignment expr var where
@@ -51,7 +50,7 @@ data AnnSeq expr var cmd
   -- ^ Just a series of assignments without annotations
   | CmdAssign cmd [Assignment expr var]
   -- ^ A command followed by a series of assignments
-  | Annotation (AnnSeq expr var cmd) (PropOn (expr var) Bool) (AnnSeq expr var cmd)
+  | Annotation (AnnSeq expr var cmd) (PropOver (expr var) Bool) (AnnSeq expr var cmd)
   -- ^ An initial sequence, followed by an annotation, then another sequence
 
 --------------------------------------------------------------------------------
@@ -62,7 +61,7 @@ data AnnSeq expr var cmd
 -- assignment.
 subAssignment
   :: (Substitutive expr, Location l)
-  => Assignment expr (Var l) -> PropOn (expr (Var l)) a -> PropOn (expr (Var l)) a
+  => Assignment expr (Var l) -> PropOver (expr (Var l)) a -> PropOver (expr (Var l)) a
 subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars (subVar newExpr targetVar))
 
 

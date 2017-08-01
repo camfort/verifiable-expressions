@@ -26,7 +26,7 @@ import qualified Language.Expression.DSL as VD
 --  Translating expressions in WHILE
 --------------------------------------------------------------------------------
 
-type VExpr l a = VD.Expr (V.Var l) a
+type VExpr l a = VD.Expr' V.StandardOps (V.Var l) a
 
 translateArithOp :: ArithOp (VExpr l Integer) -> VExpr l Bool
 translateArithOp = \case
@@ -62,7 +62,7 @@ translateBexpr = \case
 --  Translating propositions over WHILE
 --------------------------------------------------------------------------------
 
-type VProp l a = VD.Prop' (V.Var l) a
+type VProp l a = VD.Prop V.StandardOps (V.Var l) a
 
 translatePropOp :: PropOp (VProp l Bool) -> VProp l Bool
 translatePropOp = \case
@@ -99,7 +99,7 @@ generateVCs :: (V.Location l) => WhileProp l -> WhileProp l -> AnnCommand l a ->
 generateVCs precond postcond = generateVCs' (translateProp precond) (translateProp postcond)
 
 
-generateVCs' :: (V.Location l) => V.GenVCs Maybe (V.Expr V.BasicOp) (V.Var l) (AnnCommand l a)
+generateVCs' :: (V.Location l) => V.GenVCs Maybe (VD.Expr' V.StandardOps) (V.Var l) (AnnCommand l a)
 generateVCs' precond postcond = \case
   CAnn (PropAnn prop _) command ->
     generateVCs' (translateProp prop *&& precond) postcond command
@@ -131,7 +131,7 @@ generateVCs' precond postcond = \case
 -- | Split the command into all the top-level sequenced commands, interspersed
 -- with annotations. Returns 'Nothing' if the command's sequences are not
 -- sufficiently annotated.
-splitSeq :: AnnCommand l a -> Maybe (V.AnnSeq (V.Expr V.BasicOp) (V.Var l) (AnnCommand l a))
+splitSeq :: AnnCommand l a -> Maybe (V.AnnSeq (V.Expr' V.StandardOps) (V.Var l) (AnnCommand l a))
 splitSeq = \case
   CSeq c1 (CAnn (PropAnn midcond _) c2) ->
     do a1 <- splitSeq c1

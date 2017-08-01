@@ -1,19 +1,21 @@
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE EmptyCase             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PatternSynonyms       #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE EmptyCase                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module Language.Expression where
 
+import           Control.Lens          (Prism', prism')
 import           Data.Functor.Identity
 
 --------------------------------------------------------------------------------
@@ -79,6 +81,15 @@ data OpChoice ops (t :: * -> *) a where
   Op0 :: op t a -> OpChoice (op : ops) t a
   OpS :: OpChoice ops t a -> OpChoice (op : ops) t a
 
+_Op0 :: Prism' (OpChoice (op : ops) t a) (op t a)
+_Op0 = prism' Op0 $ \case
+  Op0 x -> Just x
+  OpS _ -> Nothing
+
+_OpS :: Prism' (OpChoice (op : ops) t a) (OpChoice ops t a)
+_OpS = prism' OpS $ \case
+  Op0 _ -> Nothing
+  OpS x -> Just x
 
 instance Operator (OpChoice '[]) where
   htraverseOp _ x = case x of {}
@@ -98,13 +109,14 @@ instance (EvalOp f t op, EvalOp f t (OpChoice ops)) => EvalOp f t (OpChoice (op 
     Op0 x -> evalOp f x
     OpS x -> evalOp f x
 
-pattern Op1 x = OpS (Op0 x)
-pattern Op2 x = OpS (Op1 x)
-pattern Op3 x = OpS (Op2 x)
-pattern Op4 x = OpS (Op3 x)
-pattern Op5 x = OpS (Op4 x)
-pattern Op6 x = OpS (Op5 x)
-pattern Op7 x = OpS (Op6 x)
+class ChooseOp op ops where
+  chooseOp :: Prism' (OpChoice ops t a) (op t a)
+
+instance {-# OVERLAPPING #-} ChooseOp op (op : ops) where
+  chooseOp = _Op0
+
+instance {-# OVERLAPPABLE #-} ChooseOp op ops => ChooseOp op (op' : ops) where
+  chooseOp = _OpS . chooseOp
 
 --------------------------------------------------------------------------------
 --  Expressions
@@ -133,14 +145,6 @@ instance (Operator op) => Substitutive (Expr op) where
     EVar x -> f x
     EOp op -> EOp $ hmapOp (bindVars f) op
 
--- | Given a way to evaluate variables, evaluate the whole expression.
-evalExpr
-  :: (EvalOp f t op)
-  => (forall b. v b -> f (t b))
-  -> Expr op v a
-  -> f (t a)
-evalExpr = evalOp
-
 -- | It turns out an expression can be treated as an operator. "Variables"
 -- become operator argument positions.
 instance (Operator op) => Operator (Expr op) where
@@ -155,3 +159,20 @@ instance (EvalOp f t op) => EvalOp f t (Expr op) where
     EVar x -> f x
     EOp op -> evalOp (evalOp f) op
 
+-- | This is a convenience for working with expressions over a choice of
+-- operators.
+newtype Expr' ops v a = Expr' { getExpr' :: Expr (OpChoice ops) v a }
+
+-- TODO: Figure out type roles so these instances can be derived by
+-- GeneralizedNewtypeDeriving
+
+instance (Operator (OpChoice ops)) => Operator (Expr' ops) where
+  htraverseOp f = fmap Expr' . htraverseOp f . getExpr'
+
+instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
+  pureVar = Expr' . pureVar
+
+  bindVars f = Expr' . bindVars (getExpr' . f) . getExpr'
+
+instance (EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
+  evalOp f = evalOp f . getExpr'

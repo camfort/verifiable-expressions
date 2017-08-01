@@ -32,7 +32,7 @@ import           Data.SBV                      (SBV, SBool, bnot, constrain)
 import qualified Data.SBV.Control              as S
 
 import           Language.Expression
-import           Language.Expression.Operators
+import           Language.Expression.DSL
 import           Language.Expression.SBV
 import           Language.Verification.Core
 
@@ -42,7 +42,7 @@ import           Language.Verification.Core
 
 checkProp
   :: (Substitutive expr, Location l, EvalOp (EvalT EvalContext (Query l expr)) SBV expr)
-  => PropOn (expr (Var l)) Bool
+  => PropOver (expr (Var l)) Bool
   -> Query l expr Bool
 checkProp prop = do
   symbolicProp <- propToSBV defaultEvalContext prop
@@ -60,7 +60,7 @@ checkProp prop = do
 propToSBV
   :: (Substitutive expr, Location l, EvalOp (EvalT EvalContext (Query l expr)) SBV expr)
   => EvalContext
-  -> PropOn (expr (Var l)) Bool
+  -> PropOver (expr (Var l)) Bool
   -> Query l expr SBool
 propToSBV context prop = do
   res <- runEvalT (evalOp (evalOp (lift . symbolVar)) prop) context

@@ -28,9 +28,9 @@ module Language.Verification.Conditions
   ) where
 
 import           Language.Verification
-import           Language.Verification.Expression
-import           Language.Verification.Expression.Operators
-import           Language.Verification.Expression.DSL hiding (Prop)
+import           Language.Expression
+import           Language.Expression.Operators
+import           Language.Expression.DSL hiding (Prop)
 
 
 --------------------------------------------------------------------------------

@@ -3,9 +3,9 @@
 module Language.While.Hoare.Prover where
 
 import           Language.Verification
-import qualified Language.Verification.Expression           as V
-import qualified Language.Verification.Expression.Operators as V
-import Language.Verification.Expression.DSL
+import qualified Language.Expression           as V
+import qualified Language.Expression.Operators as V
+import Language.Expression.DSL
 
 import           Language.While.Hoare
 

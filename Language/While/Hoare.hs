@@ -17,10 +17,10 @@ import           Language.While.Syntax                as S
 
 import qualified Language.Verification                as V
 import qualified Language.Verification.Conditions     as V
-import qualified Language.Verification.Expression     as V
-import qualified Language.Verification.Expression.Operators     as V
-import           Language.Verification.Expression.DSL hiding (Expr, Prop)
-import qualified Language.Verification.Expression.DSL as VD
+import qualified Language.Expression     as V
+import qualified Language.Expression.Operators     as V
+import           Language.Expression.DSL hiding (Expr, Prop)
+import qualified Language.Expression.DSL as VD
 
 --------------------------------------------------------------------------------
 --  Translating expressions in WHILE

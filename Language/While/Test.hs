@@ -3,10 +3,10 @@
 
 module Language.While.Test where
 
-import           Language.Verification.Expression.Pretty
+import           Language.Expression.Pretty
 import           Language.Verification
-import qualified Language.Verification.Expression           as V
-import qualified Language.Verification.Expression.Operators as V
+import qualified Language.Expression           as V
+import qualified Language.Expression.Operators as V
 
 import           Language.While.Hoare
 import           Language.While.Hoare.Prover

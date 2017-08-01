@@ -6,7 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 
-module Language.Verification.Expression.Pretty
+module Language.Expression.Pretty
   ( putPretty
   , Pretty(..)
   , Pretty1(..)
@@ -17,9 +17,9 @@ import           Data.Functor.Const
 import           Data.List                                  (intercalate)
 
 import           Language.Verification
-import           Language.Verification.Expression
-import           Language.Verification.Expression.Operators
-import           Language.Verification.SymClasses           (prettyValuePrec)
+import           Language.Expression
+import           Language.Expression.Operators
+import           Language.Expression.Classes           (prettyValuePrec)
 
 --------------------------------------------------------------------------------
 --  Convenience

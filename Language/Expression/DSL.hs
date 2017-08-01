@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
-module Language.Verification.Expression.DSL
+module Language.Expression.DSL
   (
   -- * Types
     Expr
@@ -40,10 +40,10 @@ module Language.Verification.Expression.DSL
   , module Classes
   ) where
 
-import           Language.Verification.Expression           hiding (Expr)
-import qualified Language.Verification.Expression           as E
-import           Language.Verification.Expression.Operators
-import           Language.Verification.SymClasses           as Classes
+import           Language.Expression           hiding (Expr)
+import qualified Language.Expression           as E
+import           Language.Expression.Operators
+import           Language.Expression.Classes           as Classes
 
 
 -- | Expressions
@@ -71,7 +71,7 @@ expr = EVar
 --------------------------------------------------------------------------------
 
 -- | Embed a literal into an expression.
-lit :: (SymValue a) => a -> Expr v a
+lit :: (SymLit a) => a -> Expr v a
 lit = litOp
 
 --------------------------------------------------------------------------------
@@ -158,7 +158,7 @@ infixl 2 *||
 infixr 1 *->
 infix 1 *<->
 
-plit :: SymBool b => b -> Prop (E.Expr BasicOp v) b
+plit :: (SymBool b, SymLit b) => b -> Prop (E.Expr BasicOp v) b
 plit = expr . lit
 
 pnot :: SymBool b => Prop expr b -> Prop expr b

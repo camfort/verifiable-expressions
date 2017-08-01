@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
 
-module Language.Verification.Expression where
+module Language.Expression where
 
 import           Data.Functor.Compose
 import           Data.Functor.Identity
@@ -26,9 +26,6 @@ class Operator op where
   -- | An operator is a higher order traversable over operands.
   htraverseOp :: (Applicative f) => (forall b. t b -> f (t' b)) -> op t a -> f (op t' a)
 
-  -- | An operator can be folded whenever its operands are applicative.
-  evalOp :: (Applicative t) => op t a -> t a
-
   -- | An operator is a higher order functor over operands.
   hmapOp :: (forall b. t b -> t' b) -> op t a -> op t' a
   hmapOp f = runIdentity . htraverseOp (Identity . f)
@@ -38,6 +35,20 @@ class Operator op where
 class (Operator expr) => Substitutive expr where
   pureVar :: v a -> expr v a
   bindVars :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
+
+-- | Some operators can be evaluated in particular contexts.
+--
+-- Notice we need `f (g a)` rather than collapsing `'Compose' f g` into a single
+-- type variable. This gets around the situation where `g` is a type constructor
+-- that doesn't make sense to be applied to just anything (e.g. 'Data.SBV.SBV'),
+-- while `f` is a general context, e.g. an applicative or monad.
+class (Operator op) => EvalOp f g op where
+  evalOp :: (forall b. t b -> f (g b)) -> op t a -> f (g a)
+
+-- | A convenience function for when an operator can be evaluated with no
+-- context.
+evalOp' :: EvalOp Identity g op => (forall b. t b -> g b) -> op t a -> g a
+evalOp' f = runIdentity . evalOp (Identity . f)
 
 --------------------------------------------------------------------------------
 --  Operator Union
@@ -55,9 +66,10 @@ instance (Operator o1, Operator o2) => Operator (o1 :+: o2) where
     OpLeft op -> OpLeft <$> htraverseOp f op
     OpRight op -> OpRight <$> htraverseOp f op
 
-  evalOp = \case
-    OpLeft op -> evalOp op
-    OpRight op -> evalOp op
+instance (EvalOp f t o1, EvalOp f t o2) => EvalOp f t (o1 :+: o2) where
+  evalOp f = \case
+    OpLeft op -> evalOp f op
+    OpRight op -> evalOp f op
 
 --------------------------------------------------------------------------------
 --  Operator List Union
@@ -73,6 +85,7 @@ instance Operator (OpChoice '[]) where
   htraverseOp _ x = case x of {}
     -- absurd
 
+instance EvalOp f t (OpChoice '[]) where
   evalOp x = case x of {}
     -- absurd
 
@@ -81,9 +94,10 @@ instance (Operator op, Operator (OpChoice ops)) => Operator (OpChoice (op : ops)
     Op0 x -> Op0 <$> htraverseOp f x
     OpS x -> OpS <$> htraverseOp f x
 
-  evalOp = \case
-    Op0 x -> evalOp x
-    OpS x -> evalOp x
+instance (EvalOp f t op, EvalOp f t (OpChoice ops)) => EvalOp f t (OpChoice (op : ops)) where
+  evalOp f = \case
+    Op0 x -> evalOp f x
+    OpS x -> evalOp f x
 
 pattern Op1 x = OpS (Op0 x)
 pattern Op2 x = OpS (Op1 x)
@@ -122,11 +136,11 @@ instance (Operator op) => Substitutive (Expr op) where
 
 -- | Given a way to evaluate variables, evaluate the whole expression.
 evalExpr
-  :: (Applicative f, Operator op)
-  => (forall b. v b -> f b)
+  :: (EvalOp f t op)
+  => (forall b. v b -> f (t b))
   -> Expr op v a
-  -> f a
-evalExpr evalVar = evalOp . hmapOp evalVar
+  -> f (t a)
+evalExpr = evalOp
 
 -- | It turns out an expression can be treated as an operator. "Variables"
 -- become operator argument positions.
@@ -134,9 +148,13 @@ instance (Operator op) => Operator (Expr op) where
   htraverseOp f = \case
     EVar x -> EVar <$> f x
     EOp op -> EOp <$> htraverseOp (htraverseOp f) op
-  evalOp = \case
-    EVar x -> x
-    EOp op -> evalOp (hmapOp evalOp op)
+
+-- | Expressions can be evaluated whenever the contained operators can be
+-- evaluated.
+instance (EvalOp f t op) => EvalOp f t (Expr op) where
+  evalOp f = \case
+    EVar x -> f x
+    EOp op -> evalOp (evalOp f) op
 
 --------------------------------------------------------------------------------
 --  Hoisting

@@ -12,16 +12,17 @@ import           Data.SBV                                   hiding
                                                              ( # ))
 
 import           Language.Verification
-import           Language.Verification.Expression
-import           Language.Verification.Expression.DSL       hiding (Expr)
-import           Language.Verification.Expression.Operators
-import           Language.Verification.Expression.Pretty
+import           Language.Expression
+import           Language.Expression.DSL       hiding (Expr)
+import           Language.Expression.Operators
+import           Language.Expression.Pretty
 
 --------------------------------------------------------------------------------
 --  Test expression and propositions
 --------------------------------------------------------------------------------
 
-var' :: (SymWord a, Verifiable a) => l -> Expr op (Var l) a
+-- var' :: (SymWord a, Verifiable a) => l -> Expr op (Var l) a
+var' :: l -> Expr op (Var l) Integer
 var' = var . Var
 
 testExpr1 :: Expr BasicOp (Var String) Integer
@@ -66,5 +67,5 @@ testGetVar (Var v) = testVarmap ^? at v . _Just . _Symbol . _Wrapped
 testProp' :: PropOn (Expr BasicOp Maybe) Bool
 testProp' = hmapOp (hmapOp testGetVar) testProp
 
-testEval :: Maybe Bool
-testEval = evalOp (hmapOp evalOp testProp')
+-- testEval :: PureEval Maybe Bool
+-- testEval = getPureEval $ evalOp' _ testProp'

@@ -14,7 +14,6 @@
 
 module Language.Expression where
 
-import           Data.Functor.Compose
 import           Data.Functor.Identity
 
 --------------------------------------------------------------------------------
@@ -156,40 +155,3 @@ instance (EvalOp f t op) => EvalOp f t (Expr op) where
     EVar x -> f x
     EOp op -> evalOp (evalOp f) op
 
---------------------------------------------------------------------------------
---  Hoisting
---------------------------------------------------------------------------------
-
--- | A particular type constructor @f@ can sometimes be /hoisted/ over an
--- operator, making the operator work over objects in @t@.
-class (Operator op) => HoistOp t op where
-  -- {-# MINIMAL hoistOp | hoistOp' #-}
-
-  hoistOp :: (forall b. f b -> g (t b)) -> op f a -> op g (t a)
-  hoistOp f = hoistOp' . hmapOp (Compose . f)
-
-  hoistOp' :: op (Compose f t) a -> op f (t a)
-  hoistOp' = hoistOp getCompose
-
--- | If @f@ can be hoisted over an operator @op@, then it can also be hoisted
--- over the free monad formed by @op@.
-instance HoistOp f op => HoistOp f (Expr op) where
-  hoistOp f = \case
-    EVar x -> EVar . f $ x
-    EOp o -> EOp . hoistOp getCompose . hmapOp (Compose . hoistOp f) $ o
-
-instance (HoistOp f o1, HoistOp f o2) => HoistOp f (o1 :+: o2) where
-  hoistOp f = \case
-    OpLeft x -> OpLeft (hoistOp f x)
-    OpRight x -> OpRight (hoistOp f x)
-
-instance HoistOp f (OpChoice '[]) where
-  hoistOp _ x = case x of
-    -- absurd
-
-instance (HoistOp f op, HoistOp f (OpChoice ops)
-         ) => HoistOp f (OpChoice (op : ops)) where
-
-  hoistOp f = \case
-    Op0 x -> Op0 (hoistOp f x)
-    OpS x -> OpS (hoistOp f x)

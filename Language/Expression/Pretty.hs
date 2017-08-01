@@ -7,6 +7,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 
+{-|
+
+Pretty printing for expressions.
+
+-}
 module Language.Expression.Pretty
   ( putPretty
   , Pretty(..)

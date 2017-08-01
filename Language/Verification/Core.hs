@@ -34,6 +34,14 @@ import           Language.Expression.SBV
 
 data VerifierSymbol f
   = VSInteger (f Integer)
+  | VSWord8 (f Word8)
+  | VSWord16 (f Word16)
+  | VSWord32 (f Word32)
+  | VSWord64 (f Word64)
+  | VSInt8 (f Int8)
+  | VSInt16 (f Int16)
+  | VSInt32 (f Int32)
+  | VSInt64 (f Int64)
   | VSBool (f Bool)
   | VSReal (f AlgReal)
   | VSFloat (f Float)
@@ -44,20 +52,19 @@ makePrisms ''VerifierSymbol
 class Typeable a => Verifiable a where
   _Symbol :: Prism' (VerifierSymbol f) (f a)
 
-instance Verifiable Integer where
-  _Symbol = _VSInteger
-
-instance Verifiable Bool where
-  _Symbol = _VSBool
-
-instance Verifiable Float where
-  _Symbol = _VSFloat
-
-instance Verifiable Double where
-  _Symbol = _VSDouble
-
-instance Verifiable AlgReal where
-  _Symbol = _VSReal
+instance Verifiable Integer where _Symbol = _VSInteger
+instance Verifiable Word8 where _Symbol = _VSWord8
+instance Verifiable Word16 where _Symbol = _VSWord16
+instance Verifiable Word32 where _Symbol = _VSWord32
+instance Verifiable Word64 where _Symbol = _VSWord64
+instance Verifiable Int8 where _Symbol = _VSInt8
+instance Verifiable Int16 where _Symbol = _VSInt16
+instance Verifiable Int32 where _Symbol = _VSInt32
+instance Verifiable Int64 where _Symbol = _VSInt64
+instance Verifiable Bool where _Symbol = _VSBool
+instance Verifiable Float where _Symbol = _VSFloat
+instance Verifiable Double where _Symbol = _VSDouble
+instance Verifiable AlgReal where _Symbol = _VSReal
 
 --------------------------------------------------------------------------------
 --  Variables

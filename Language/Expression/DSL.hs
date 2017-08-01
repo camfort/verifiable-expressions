@@ -1,6 +1,11 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
 
+{-|
+
+Combinators for conveniently constructing expressions and propositions.
+
+-}
 module Language.Expression.DSL
   (
   -- * Types

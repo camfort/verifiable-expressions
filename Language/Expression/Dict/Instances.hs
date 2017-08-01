@@ -1,5 +1,10 @@
 {-# LANGUAGE DataKinds #-}
 
+{-|
+
+Default examples of 'Dictmap's and 'Dictmap2's for standard type classes.
+
+-}
 module Language.Expression.Dict.Instances where
 
 import           Data.Typeable                      (Proxy (..))

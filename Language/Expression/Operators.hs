@@ -6,6 +6,11 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 
+{-|
+
+A collection of standard operator types which may be used to form expressions.
+
+-}
 module Language.Expression.Operators
   (
   -- * Standard operators
@@ -20,6 +25,12 @@ module Language.Expression.Operators
 
   -- * Evaluating purely
   , PureEval(..)
+
+  -- * Expression and operator type classes
+  , module Expression
+
+  -- * Classes used to constrain operator types
+  , module Classes
   ) where
 
 import           Control.Applicative         (liftA2)
@@ -27,16 +38,29 @@ import           Data.Functor.Compose
 
 import           Data.SBV                    (SBV)
 
-import           Language.Expression
-import           Language.Expression.Classes
+import           Language.Expression         as Expression
+import           Language.Expression.Classes as Classes
 
 --------------------------------------------------------------------------------
 --  Operators
 --------------------------------------------------------------------------------
 
-newtype PureEval f a = PureEval { getPureEval :: f a }
-  deriving (Functor, Applicative)
+{-| A newtype wrapper to evaluate operators in a pure context.
 
+e.g.
+
+@
+getPureEval . evalOp' PureEval :: Expr' StandardOps Maybe a -> Maybe a
+@
+
+Notice this expression contains variables in 'Maybe', which actually means that
+"variables" have been substituted for literal values that may or may not exist.
+
+-}
+newtype PureEval f a = PureEval { getPureEval :: f a }
+  deriving (Functor, Applicative, Monad)
+
+-- | Logical operations.
 data BoolOp t a where
   OpNot :: SymBool b => t b -> BoolOp t b
   OpAnd :: SymBool b => t b -> t b -> BoolOp t b
@@ -44,17 +68,21 @@ data BoolOp t a where
   OpImpl :: SymBool b => t b -> t b -> BoolOp t b
   OpEquiv :: SymBool b => t b -> t b -> BoolOp t b
 
+-- | Numeric operations.
 data NumOp t a where
   OpAdd :: SymNum a => t a -> t a -> NumOp t a
   OpSub :: SymNum a => t a -> t a -> NumOp t a
   OpMul :: SymNum a => t a -> t a -> NumOp t a
 
+-- | Embedding literal values.
 data LitOp (t :: * -> *) a where
   OpLit :: SymLit a => a -> LitOp t a
 
+-- | Equality comparison.
 data EqOp t a where
   OpEq :: SymEq b a => t a -> t a -> EqOp t b
 
+-- | Ordering.
 data OrdOp t a where
   OpLT :: SymOrd b a => t a -> t a -> OrdOp t b
   OpLE :: SymOrd b a => t a -> t a -> OrdOp t b
@@ -126,7 +154,7 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) OrdOp where
     OpGT x y -> liftA2' f symGt x y
     OpGE x y -> liftA2' f symGe x y
 
--- | A type-level list of standard operators.
+-- | A list of the standard operators to be used in an 'Expr''.
 type StandardOps = '[LitOp, BoolOp, NumOp, EqOp, OrdOp]
 
 --------------------------------------------------------------------------------

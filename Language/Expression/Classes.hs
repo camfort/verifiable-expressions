@@ -3,6 +3,12 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+
+Type classes used to constrain the types that the standard operators can work
+with.
+
+-}
 module Language.Expression.Classes where
 
 import           Data.Int

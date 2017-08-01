@@ -13,7 +13,20 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Language.Expression where
+module Language.Expression
+  (
+  -- * Classes
+    Operator(..)
+  , Substitutive(..)
+  , EvalOp(..)
+  , evalOp'
+  -- * Expressions
+  , Expr(..)
+  , Expr'(..)
+  -- * Operator union
+  , OpChoice(..)
+  , ChooseOp(..)
+  ) where
 
 import           Control.Lens          (Prism', prism')
 import           Data.Functor.Identity
@@ -34,7 +47,14 @@ class Operator op where
 -- | The class of expressions which contain variables that can be substituted,
 -- i.e. higher-order monads.
 class (Operator expr) => Substitutive expr where
+  -- | Create an expression consisting of just the given variable.
+  --
+  -- This is the higher-order version of 'return'.
   pureVar :: v a -> expr v a
+
+  -- | Substitute all variables in the expression with a new expression.
+  --
+  -- This is the higher-order version of '(>>=)'.
   bindVars :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
 
 -- | Some operators can be evaluated in particular contexts.
@@ -52,31 +72,14 @@ evalOp' :: EvalOp Identity g op => (forall b. t b -> g b) -> op t a -> g a
 evalOp' f = runIdentity . evalOp (Identity . f)
 
 --------------------------------------------------------------------------------
---  Operator Union
---------------------------------------------------------------------------------
-
-infixl 5 :+:
-
--- | The union of two operators is an operator.
-data (o1 :+: o2) (t :: * -> *) a
-  = OpLeft (o1 t a)
-  | OpRight (o2 t a)
-
-instance (Operator o1, Operator o2) => Operator (o1 :+: o2) where
-  htraverseOp f = \case
-    OpLeft op -> OpLeft <$> htraverseOp f op
-    OpRight op -> OpRight <$> htraverseOp f op
-
-instance (EvalOp f t o1, EvalOp f t o2) => EvalOp f t (o1 :+: o2) where
-  evalOp f = \case
-    OpLeft op -> evalOp f op
-    OpRight op -> evalOp f op
-
---------------------------------------------------------------------------------
 --  Operator List Union
 --------------------------------------------------------------------------------
 
--- | The union of arbitrarily many operators is an operator.
+-- | Form the union of a list of operators. This creates an operator which is a
+-- choice from one of its constituents.
+--
+-- For example, @'OpChoice' '[NumOp, EqOp]@ is an operator that can either
+-- represent an arithmetic operation or an equality comparison.
 data OpChoice ops (t :: * -> *) a where
   Op0 :: op t a -> OpChoice (op : ops) t a
   OpS :: OpChoice ops t a -> OpChoice (op : ops) t a
@@ -109,7 +112,10 @@ instance (EvalOp f t op, EvalOp f t (OpChoice ops)) => EvalOp f t (OpChoice (op 
     Op0 x -> evalOp f x
     OpS x -> evalOp f x
 
+-- | This class provides a low-boilerplate way of lifting individual operators
+-- into a union, and extracting operators from a union.
 class ChooseOp op ops where
+  -- | Project a single operator from a union which contains it.
   chooseOp :: Prism' (OpChoice ops t a) (op t a)
 
 instance {-# OVERLAPPING #-} ChooseOp op (op : ops) where
@@ -129,13 +135,6 @@ instance {-# OVERLAPPABLE #-} ChooseOp op ops => ChooseOp op (op' : ops) where
 data Expr op v a
   = EVar (v a)
   | EOp (op (Expr op v) a)
-
--- | 'Expr' is a higher-order traversable over variables.
-traverseVars
-  :: (Applicative f, Operator op)
-  => (forall b. v b -> f (v' b))
-  -> Expr op v a -> f (Expr op v' a)
-traverseVars = htraverseOp
 
 -- | Variables in an expression can be substituted.
 instance (Operator op) => Substitutive (Expr op) where
@@ -159,8 +158,11 @@ instance (EvalOp f t op) => EvalOp f t (Expr op) where
     EVar x -> f x
     EOp op -> evalOp (evalOp f) op
 
--- | This is a convenience for working with expressions over a choice of
--- operators.
+-- | An expression @'Expr'' ops v a@ has operations from the type-level list
+-- @ops@, variables in the type @v@ and it represents a value of type @a@.
+--
+-- Intuitively, it represents an expression which may contain operations from
+-- any of the operators in the list @ops@.
 newtype Expr' ops v a = Expr' { getExpr' :: Expr (OpChoice ops) v a }
 
 -- TODO: Figure out type roles so these instances can be derived by

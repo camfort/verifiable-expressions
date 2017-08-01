@@ -1,55 +1,42 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 module Language.Verification.Test where
 
-import           Control.Lens
+import           Control.Lens                  hiding ((.>))
 import           Data.Functor.Identity
 
-import           Data.Map                                   (Map)
-import qualified Data.Map                                   as Map
-import           Data.SBV                                   hiding
-                                                             (OrdSymbolic (..),
-                                                             ( # ))
+import           Data.Map                      (Map)
+import qualified Data.Map                      as Map
 
-import           Language.Verification
-import           Language.Expression
-import           Language.Expression.DSL       hiding (Expr)
-import           Language.Expression.Operators
 import           Language.Expression.Pretty
+import           Language.Verification hiding (Expr)
 
 --------------------------------------------------------------------------------
 --  Test expression and propositions
 --------------------------------------------------------------------------------
 
--- var' :: (SymWord a, Verifiable a) => l -> Expr op (Var l) a
-var' :: l -> Expr op (Var l) Integer
+var' :: (Verifiable a, SymWord a) => l -> Expr' ops (Var l) a
 var' = var . Var
-
-testExpr1 :: Expr BasicOp (Var String) Integer
-testExpr1 = var' "x" .* lit 5
-
-testExpr2 :: Expr BasicOp (Var String) Integer
-testExpr2 = var' "x" .* lit 10
-
-testExpr3 :: Expr BasicOp (Var String) Bool
-testExpr3 = testExpr1 .<= testExpr2
 
 -- TODO: This is apparently not a theorem. Investigate!
 
-testProp :: Prop' (Var String) Bool
-testProp = expr testExpr3
+testProp :: Prop StandardOps (Var String) Bool
+testProp =
+  expr (var' "x" .>= lit (0 :: Integer)) .->
+  expr (var' "x" .* lit (5 :: Integer) .<= var' "x" .* lit 10)
 
 --------------------------------------------------------------------------------
 --  Testing interaction with the verifier
 --------------------------------------------------------------------------------
 
-testVerifier :: Verifier String (Expr BasicOp) Bool
+testVerifier :: Verifier String (Expr' StandardOps) Bool
 testVerifier = query $ checkProp testProp
 
 testConfig :: SMTConfig
 testConfig = defaultSMTCfg { verbose = True }
 
-test :: IO (Either (VerifierError String (Expr BasicOp)) Bool)
+test :: IO (Either (VerifierError String (Expr' StandardOps)) Bool)
 test = runVerifierWith testConfig testVerifier
 
 --------------------------------------------------------------------------------
@@ -64,8 +51,8 @@ testVarmap = Map.fromList
 testGetVar :: (Var String) a -> Maybe a
 testGetVar (Var v) = testVarmap ^? at v . _Just . _Symbol . _Wrapped
 
-testProp' :: PropOn (Expr BasicOp Maybe) Bool
+testProp' :: PropOver (Expr' StandardOps Maybe) Bool
 testProp' = hmapOp (hmapOp testGetVar) testProp
 
--- testEval :: PureEval Maybe Bool
--- testEval = getPureEval $ evalOp' _ testProp'
+testEval :: Maybe Bool
+testEval = getPureEval $ evalOp' (evalOp' PureEval) testProp'

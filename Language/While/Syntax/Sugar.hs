@@ -15,30 +15,30 @@ infix 8 .>=
 infixr 7 .&&
 infixr 6 .||
 
-(.=.) :: l -> Expr l -> Command l a
+(.=.) :: l -> WhileExpr l Integer -> Command l a
 (.=.) = CAssign
 
 (\\) :: Command l a -> Command l a -> Command l a
 (\\) = CSeq
 
-(^^^) :: WhileProp l -> AnnCommand l () -> AnnCommand l ()
+(^^^) :: WhileProp l Bool -> AnnCommand l () -> AnnCommand l ()
 prop ^^^ command = CAnn (PropAnn prop ()) command
 
-(.<) :: Expr l -> Expr l -> Bexpr l
+(.<) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
 (.<) = BLess
 
-(.<=) :: Expr l -> Expr l -> Bexpr l
+(.<=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
 (.<=) = BLessEq
 
-(.>) :: Expr l -> Expr l -> Bexpr l
+(.>) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
 (.>) = flip BLess
 
-(.>=) :: Expr l -> Expr l -> Bexpr l
+(.>=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
 (.>=) = flip BLessEq
 
-(.&&) :: Bexpr l -> Bexpr l -> Bexpr l
+(.&&) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
 (.&&) = BAnd
 
-(.||) :: Bexpr l -> Bexpr l -> Bexpr l
+(.||) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
 (.||) = BOr
 

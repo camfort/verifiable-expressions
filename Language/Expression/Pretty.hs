@@ -16,8 +16,11 @@ Pretty printing for expressions.
 module Language.Expression.Pretty
   ( putPretty
   , Pretty(..)
+  , prettys
   , Pretty1(..)
+  , prettys1
   , Pretty2(..)
+  , prettys2
   ) where
 
 -- import Prelude hiding (showParen)
@@ -26,6 +29,7 @@ import           Data.Functor.Const
 import           Data.List                                  (intercalate)
 
 import           Language.Verification
+import           Language.Expression.Operators
 import           Language.Expression.Classes           (prettyValuePrec)
 
 --------------------------------------------------------------------------------
@@ -167,6 +171,9 @@ instance (Pretty2 op, Pretty2 (OpChoice ops)) => Pretty2 (OpChoice (op : ops)) w
     Op0 x -> prettys2Prec p x
     OpS x -> prettys2Prec p x
 
+instance {-# OVERLAPPING #-} Pretty String where
+  pretty = id
+
 instance {-# OVERLAPPING #-} Pretty a => Pretty [a] where
   pretty xs =
     "[ " ++
@@ -180,3 +187,6 @@ instance {-# OVERLAPPING #-} Pretty a => Pretty (Maybe a) where
 
 instance Pretty1 (Var String) where
   pretty1 (Var x) = x
+
+instance Pretty () where
+  pretty = show

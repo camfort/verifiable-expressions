@@ -2,20 +2,19 @@
 
 module Language.While.Hoare.Prover where
 
-import qualified Language.Expression           as V
 import           Language.Expression.DSL
-import qualified Language.Expression.Operators as V
 import           Language.Verification
 
+import           Language.While.Syntax
 import           Language.While.Hoare
 
 
 checkPartialHoare
   :: Location l
-  => WhileProp l
-  -> WhileProp l
+  => WhileProp l Bool
+  -> WhileProp l Bool
   -> AnnCommand l a
-  -> Query l (V.Expr' V.StandardOps) Bool
+  -> Query l (Expr WhileOp) Bool
 checkPartialHoare precond postcond cmd =
   do vcs <- case generateVCs precond postcond cmd of
               Just x -> return x
@@ -27,9 +26,9 @@ checkPartialHoare precond postcond cmd =
 
 provePartialHoare
   :: Location l
-  => WhileProp l
-  -> WhileProp l
+  => WhileProp l Bool
+  -> WhileProp l Bool
   -> AnnCommand l a
-  -> IO (Either (VerifierError l (V.Expr' V.StandardOps)) Bool)
+  -> IO (Either (VerifierError l (Expr WhileOp)) Bool)
 provePartialHoare precond postcond cmd =
   runVerifier . query $ checkPartialHoare precond postcond cmd

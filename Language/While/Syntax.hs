@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor      #-}
 {-# LANGUAGE TypeSynonymInstances      #-}
@@ -5,211 +7,222 @@
 {-# LANGUAGE DeriveTraversable  #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE TemplateHaskell    #-}
 
 
 module Language.While.Syntax where
 
-import           Data.Data
 import           Data.String         (IsString (..))
 
-import           Data.Map            (Map)
-import qualified Data.Map            as Map
+import           Control.Applicative (liftA2)
+import Data.SBV
 
-import           Control.Monad.State
+-- These imports are used for evaluating commands
+-- import           Data.Map            (Map)
+-- import qualified Data.Map            as Map
+-- import           Control.Monad.State
 
-import           Control.Lens        hiding (op)
+import Language.Expression
+import Language.Expression.Pretty
 
-import Language.Expression (SimpleExpr(..))
+data WhileOp t a where
+  OpAdd, OpSub, OpMul :: t Integer -> t Integer -> WhileOp t Integer
+  OpEq, OpLT, OpLE, OpGT, OpGE :: t Integer -> t Integer -> WhileOp t Bool
+  OpNot :: t Bool -> WhileOp t Bool
+  OpAnd, OpOr :: t Bool -> t Bool -> WhileOp t Bool
+  OpLitInteger :: Integer -> WhileOp t Integer
+  OpLitBool :: Bool -> WhileOp t Bool
 
---------------------------------------------------------------------------------
---  Arithmetic expressions
---------------------------------------------------------------------------------
+instance Operator WhileOp where
+  htraverseOp f = \case
+    OpAdd x y -> OpAdd <$> f x <*> f y
+    OpSub x y -> OpSub <$> f x <*> f y
+    OpMul x y -> OpMul <$> f x <*> f y
+    OpEq x y -> OpEq <$> f x <*> f y
+    OpLT x y -> OpLT <$> f x <*> f y
+    OpLE x y -> OpLE <$> f x <*> f y
+    OpGT x y -> OpGT <$> f x <*> f y
+    OpGE x y -> OpGE <$> f x <*> f y
+    OpNot x -> OpNot <$> f x
+    OpAnd x y -> OpAnd <$> f x <*> f y
+    OpOr x y -> OpOr <$> f x <*> f y
+    OpLitInteger x -> pure (OpLitInteger x)
+    OpLitBool x -> pure (OpLitBool x)
 
-data ExprOp a = OAdd a a | OMul a a | OSub a a | OLit Integer
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+instance HEq WhileOp where
+  liftHEq le _ (OpAdd x1 y1) (OpAdd x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpSub x1 y1) (OpSub x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpMul x1 y1) (OpMul x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpEq x1 y1) (OpEq x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpLT x1 y1) (OpLT x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpLE x1 y1) (OpLE x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpGT x1 y1) (OpGT x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpGE x1 y1) (OpGE x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpAnd x1 y1) (OpAnd x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpOr x1 y1) (OpOr x2 y2) = le (==) x1 x2 && le (==) y1 y2
+  liftHEq le _ (OpNot x) (OpNot y) = le (==) x y
+  liftHEq _ _ (OpLitInteger x) (OpLitInteger y) = x == y
+  liftHEq _ _ (OpLitBool x) (OpLitBool y) = x == y
+  liftHEq _ _ _ _ = False
 
-evalExprOp :: (Num n) => ExprOp n -> n
-evalExprOp = \case
-  OAdd x y -> x + y
-  OMul x y -> x * y
-  OSub x y -> x - y
-  OLit x -> fromInteger x
+instance Pretty2 WhileOp where
+  prettys2Prec p = \case
+    OpAdd x y ->
+      showParen (p > 5) $ prettys1Prec 6 x . showString " + " . prettys1Prec 6 y
+    OpSub x y ->
+      showParen (p > 5) $ prettys1Prec 6 x . showString " - " . prettys1Prec 6 y
+    OpMul x y ->
+      showParen (p > 6) $ prettys1Prec 7 x . showString " * " . prettys1Prec 7 y
 
-type Expr = SimpleExpr ExprOp
+    OpEq x y ->
+      showParen (p > 4) $ prettys1Prec 5 x . showString " = " . prettys1Prec 5 y
 
+    OpLT x y ->
+      showParen (p > 4) $ prettys1Prec 5 x . showString " < " . prettys1Prec 5 y
+    OpLE x y ->
+      showParen (p > 4) $ prettys1Prec 5 x . showString " <= " . prettys1Prec 5 y
+    OpGT x y ->
+      showParen (p > 4) $ prettys1Prec 5 x . showString " > " . prettys1Prec 5 y
+    OpGE x y ->
+      showParen (p > 4) $ prettys1Prec 5 x . showString " >= " . prettys1Prec 5 y
 
-pattern EAdd :: Expr t -> Expr t -> Expr t
-pattern EAdd a b = SOp (OAdd a b)
+    OpNot x -> showParen (p > 8) $ showString "! " . prettys1Prec 9 x
+    OpAnd x y ->
+      showParen (p > 3) $ prettys1Prec 4 x . showString " && " . prettys1Prec 4 y
+    OpOr x y ->
+      showParen (p > 2) $ prettys1Prec 3 x . showString " || " . prettys1Prec 3 y
 
-pattern EMul :: Expr t -> Expr t -> Expr t
-pattern EMul a b = SOp (OMul a b)
+    OpLitInteger x -> shows x
+    OpLitBool x -> shows x
 
-pattern ESub :: Expr t -> Expr t -> Expr t
-pattern ESub a b = SOp (OSub a b)
+instance (Applicative f) => EvalOp f SBV WhileOp where
+  evalOp f = \case
+    OpAdd x y -> liftA2 (+) (f x) (f y)
+    OpSub x y -> liftA2 (-) (f x) (f y)
+    OpMul x y -> liftA2 (*) (f x) (f y)
 
-instance Num (Expr l) where
-  fromInteger = SOp . OLit
+    OpEq x y -> liftA2 (.==) (f x) (f y)
+    OpLT x y -> liftA2 (.<) (f x) (f y)
+    OpLE x y -> liftA2 (.<=) (f x) (f y)
+    OpGT x y -> liftA2 (.>) (f x) (f y)
+    OpGE x y -> liftA2 (.>=) (f x) (f y)
 
-  (+) = EAdd
-  (*) = EMul
-  (-) = ESub
+    OpAnd x y -> liftA2 (&&&) (f x) (f y)
+    OpOr x y -> liftA2 (|||) (f x) (f y)
+    OpNot x -> bnot <$> f x
+
+    OpLitInteger x -> pure (fromInteger x)
+    OpLitBool x -> pure (fromBool x)
+
+data WhileVar l a where
+  WhileVar :: l -> WhileVar l Integer
+
+instance Pretty l => Pretty1 (WhileVar l) where
+  pretty1 (WhileVar l) = pretty l
+
+type WhileExpr l = Expr WhileOp (WhileVar l)
+
+(...) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+(f ... g) x y = f (g x y)
+
+instance Num (WhileExpr l Integer) where
+  fromInteger = EOp . OpLitInteger . fromInteger
+
+  (+) = EOp ... OpAdd
+  (*) = EOp ... OpMul
+  (-) = EOp ... OpSub
   abs = error "can't take abs of expressions"
   signum = error "can't take signum of expressions"
 
-instance IsString s => IsString (Expr s) where
-  fromString = SVar . fromString
+instance IsString s => IsString (WhileExpr s Integer) where
+  fromString = EVar . WhileVar . fromString
 
---------------------------------------------------------------------------------
---  Boolean expressions
---------------------------------------------------------------------------------
+pattern BLess :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+pattern BLess a b = EOp (OpLT a b)
 
-data ArithOp a
-  = OLess a a
-  | OLessEq a a
-  | OEq a a
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+pattern BLessEq :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+pattern BLessEq a b = EOp (OpLE a b)
 
-
-data BoolOp a
-  = OAnd a a
-  | OOr a a
-  | ONot a
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+pattern BEq :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+pattern BEq a b = EOp (OpEq a b)
 
 
-evalArithOp :: (Ord n) => ArithOp n -> Bool
-evalArithOp = \case
-  OLess a b -> a < b
-  OLessEq a b -> a <= b
-  OEq a b -> a == b
+pattern BAnd :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
+pattern BAnd a b = EOp (OpAnd a b)
 
+pattern BOr :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
+pattern BOr a b = EOp (OpOr a b)
 
-evalBoolOp :: BoolOp Bool -> Bool
-evalBoolOp = \case
-  OAnd a b -> a && b
-  OOr a b -> a || b
-  ONot a -> not a
-
-
-data Bexpr l
-  = BArithOp (ArithOp (Expr l))
-  | BBoolOp (BoolOp (Bexpr l))
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
-
-
-pattern BLess :: Expr t -> Expr t -> Bexpr t
-pattern BLess a b = BArithOp (OLess a b)
-
-pattern BLessEq :: Expr t -> Expr t -> Bexpr t
-pattern BLessEq a b = BArithOp (OLessEq a b)
-
-pattern BEq :: Expr t -> Expr t -> Bexpr t
-pattern BEq a b = BArithOp (OEq a b)
-
-
-pattern BAnd :: Bexpr t -> Bexpr t -> Bexpr t
-pattern BAnd a b = BBoolOp (OAnd a b)
-
-pattern BOr :: Bexpr t -> Bexpr t -> Bexpr t
-pattern BOr a b = BBoolOp (OOr a b)
-
-pattern BNot :: Bexpr t -> Bexpr t
-pattern BNot a = BBoolOp (ONot a)
-
-
-bindBexpr :: (a -> Expr b) -> Bexpr a -> Bexpr b
-bindBexpr f = \case
-  BArithOp op -> BArithOp (fmap (>>= f) op)
-  BBoolOp op -> BBoolOp (fmap (bindBexpr f) op)
+pattern BNot :: WhileExpr l Bool -> WhileExpr l Bool
+pattern BNot a = EOp (OpNot a)
 
 
 data Command l a
   = CAnn a (Command l a)
   | CSeq (Command l a) (Command l a)
   | CSkip
-  | CAssign l (Expr l)
-  | CIf (Bexpr l) (Command l a) (Command l a)
-  | CWhile (Bexpr l) (Command l a)
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+  | CAssign l (WhileExpr l Integer)
+  | CIf (WhileExpr l Bool) (Command l a) (Command l a)
+  | CWhile (WhileExpr l Bool) (Command l a)
+
+instance (Pretty l, Pretty a) => Pretty (Command l a) where
+  prettysPrec p = \case
+    CAnn ann c -> showParen (p > 10) $ showString "{ " . prettys ann . showString " }\n" . prettys c
+    CSeq c1 c2 -> showParen (p > 10) $ prettys c1 . showString ";\n" . prettys c2
+    CSkip -> showString "()"
+    CAssign v e -> showParen (p > 10) $ prettys v . showString " := " . prettys e
+    CIf cond c1 c2 -> showParen (p > 10) $ showString "if " . prettysPrec 11 cond . showString " then\n" . prettysPrec 11 c1 . showString "\nelse\n" . prettysPrec 11 c2
+    CWhile cond body -> showParen (p > 10) $ showString "while " . prettysPrec 11 cond . showString " do\n" . prettysPrec 11 body
+
+-- data StepResult a
+--   = Terminated
+--   | Failed
+--   | Progress a
+--   deriving (Functor)
 
 
-makePrisms ''Bexpr
-makePrisms ''Command
+-- oneStep :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) (StepResult (Command l a))
+-- oneStep = \case
+--   CAnn ann c -> fmap (CAnn ann) <$> oneStep c
+
+--   CSeq c1 c2 ->
+--     do s <- oneStep c1
+--        case s of
+--          Terminated -> return (Progress c2)
+--          Failed -> return Failed
+--          Progress c1' -> return (Progress (CSeq c1' c2))
+
+--   CSkip -> return Terminated
+
+--   CAssign loc expr ->
+--     do env <- get
+--        if Map.member loc env then
+--          case evalExpr (`Map.lookup` env) expr of
+--            Just val ->
+--              do at loc .= Just val
+--                 return Terminated
+--            Nothing -> return Failed
+--          -- Can't assign a memory location that doesn't exist
+--          else return Failed
+
+--   CIf cond c1 c2 ->
+--     do env <- get
+--        case evalBexpr (`Map.lookup` env) cond of
+--          Just True -> return (Progress c1)
+--          Just False -> return (Progress c2)
+--          _ -> return Failed
+
+--   CWhile cond body ->
+--     do env <- get
+--        case evalBexpr (`Map.lookup` env) cond of
+--          Just True -> return (Progress (CSeq body (CWhile cond body)))
+--          Just False -> return Terminated
+--          _ -> return Failed
 
 
-data StepResult a
-  = Terminated
-  | Failed
-  | Progress a
-  deriving (Functor)
-
-
-evalExpr :: (Num n, Applicative f) => (l -> f n) -> Expr l -> f n
-evalExpr env = \case
-  SOp op -> evalExprOp <$> traverse (evalExpr env) op
-  SVar loc -> env loc
-
-
-evalBexprGeneral
-  :: (Num n, Applicative f)
-  => (ArithOp n -> bool)
-  -> (BoolOp bool -> bool)
-  -> (l -> f n)
-  -> Bexpr l
-  -> f bool
-evalBexprGeneral evalArith evalBool env = \case
-  BArithOp op -> evalArith <$> traverse (evalExpr env) op
-  BBoolOp op -> evalBool <$> traverse (evalBexprGeneral evalArith evalBool env) op
-
-
-evalBexpr :: (Num n, Ord n, Applicative f) => (l -> f n) -> Bexpr l -> f Bool
-evalBexpr = evalBexprGeneral evalArithOp evalBoolOp
-
-
-oneStep :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) (StepResult (Command l a))
-oneStep = \case
-  CAnn ann c -> fmap (CAnn ann) <$> oneStep c
-
-  CSeq c1 c2 ->
-    do s <- oneStep c1
-       case s of
-         Terminated -> return (Progress c2)
-         Failed -> return Failed
-         Progress c1' -> return (Progress (CSeq c1' c2))
-
-  CSkip -> return Terminated
-
-  CAssign loc expr ->
-    do env <- get
-       if Map.member loc env then
-         case evalExpr (`Map.lookup` env) expr of
-           Just val ->
-             do at loc .= Just val
-                return Terminated
-           Nothing -> return Failed
-         -- Can't assign a memory location that doesn't exist
-         else return Failed
-
-  CIf cond c1 c2 ->
-    do env <- get
-       case evalBexpr (`Map.lookup` env) cond of
-         Just True -> return (Progress c1)
-         Just False -> return (Progress c2)
-         _ -> return Failed
-
-  CWhile cond body ->
-    do env <- get
-       case evalBexpr (`Map.lookup` env) cond of
-         Just True -> return (Progress (CSeq body (CWhile cond body)))
-         Just False -> return Terminated
-         _ -> return Failed
-
-
-runCommand :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) Bool
-runCommand command =
-  do s <- oneStep command
-     case s of
-       Terminated -> return True
-       Failed -> return False
-       Progress command' -> runCommand command'
+-- runCommand :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) Bool
+-- runCommand command =
+--   do s <- oneStep command
+--      case s of
+--        Terminated -> return True
+--        Failed -> return False
+--        Progress command' -> runCommand command'

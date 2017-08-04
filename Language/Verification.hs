@@ -34,11 +34,8 @@ module Language.Verification
   , subVar
   , propToSBV
 
-  -- * Expression DSL
-  , module DSL
-
-  -- * Expressions and standard operators
-  , module Operators
+  -- * Expressions
+  , module Expression
 
   -- * SBV re-exports
   , SMTConfig(..)
@@ -49,6 +46,5 @@ module Language.Verification
 import           Data.SBV                      (SMTConfig (..), SymWord,
                                                 defaultSMTCfg)
 
-import           Language.Expression.DSL       as DSL
-import           Language.Expression.Operators as Operators
 import           Language.Verification.Core
+import           Language.Expression as Expression

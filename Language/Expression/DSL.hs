@@ -8,21 +8,9 @@ Combinators for conveniently constructing expressions and propositions.
 -}
 module Language.Expression.DSL
   (
-  -- * Types
-    Expr
-  , Expr'
-  , PropOver
-  , Prop
   -- * Lifting
-  , var
+    var
   , expr
-  -- * Propositions
-  , plit
-  , pnot
-  , (*&&)
-  , (*||)
-  , (*->)
-  , (*<->)
   -- * Literals
   , elit
   -- * Booleans
@@ -43,6 +31,17 @@ module Language.Expression.DSL
   , (.>=)
   -- * Coercion
   , ecoerce
+  -- * Propositions
+  , PropOver
+  , Prop
+  , plit
+  , pnot
+  , (*&&)
+  , (*||)
+  , (*->)
+  , (*<->)
+  -- * Operators
+  , module Operators
   -- * Classes
   , module Classes
   ) where
@@ -51,7 +50,7 @@ import           Control.Lens                  hiding ((...), (.>))
 
 import           Language.Expression
 import           Language.Expression.Classes   as Classes
-import           Language.Expression.Operators
+import           Language.Expression.Operators as Operators
 
 -- | Propositions over general expressions.
 type PropOver = Expr LogicOp

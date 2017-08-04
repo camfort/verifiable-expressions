@@ -101,7 +101,11 @@ instance Pretty2 OrdOp where
     OpLT x y -> paren p 4 $ pretty1Prec 4 x ++ " < " ++ pretty1Prec 4 y
     OpLE x y -> paren p 4 $ pretty1Prec 4 x ++ " <= " ++ pretty1Prec 4 y
     OpGT x y -> paren p 4 $ pretty1Prec 4 x ++ " > " ++ pretty1Prec 4 y
-    OpGE x y -> paren p 4 $ pretty1Prec 4 x ++ " >+ " ++ pretty1Prec 4 y
+    OpGE x y -> paren p 4 $ pretty1Prec 4 x ++ " >= " ++ pretty1Prec 4 y
+
+instance Pretty2 CoerceOp where
+  pretty2Prec p = \case
+    OpCoerce x -> pretty1Prec p x
 
 --------------------------------------------------------------------------------
 --  Combinatory instances

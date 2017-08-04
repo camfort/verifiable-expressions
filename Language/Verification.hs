@@ -24,6 +24,7 @@ module Language.Verification
   , Verifiable(..)
   , Location(..)
   , Var(..)
+  , varName
 
   -- * Verifier actions
   , checkProp
@@ -43,9 +44,6 @@ module Language.Verification
   , SMTConfig(..)
   , defaultSMTCfg
   , SymWord
-
-  -- * Unknown type
-  , Unknown
   ) where
 
 import           Data.SBV                      (SMTConfig (..), SymWord,
@@ -53,5 +51,4 @@ import           Data.SBV                      (SMTConfig (..), SymWord,
 
 import           Language.Expression.DSL       as DSL
 import           Language.Expression.Operators as Operators
-import           Language.Expression.Unknown
 import           Language.Verification.Core

@@ -40,6 +40,7 @@ module Language.Expression
   -- * Operator union
   , OpChoice(..)
   , ChooseOp(..)
+  , SubsetOp(..)
 
   -- * Lifting functors
   , LiftOp(LiftOp)
@@ -64,6 +65,8 @@ import           Control.Monad (ap)
 import           Data.Functor.Identity
 import           Data.Functor.Compose
 import           Data.Functor.Classes
+
+import           Data.Union
 
 import           Control.Lens hiding (op)
 
@@ -91,7 +94,10 @@ class (Operator expr) => Substitutive expr where
   -- | Substitute all variables in the expression with a new expression.
   --
   -- This is the higher-order version of '(>>=)'.
-  bindVars :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
+  bindVars :: (Applicative f) => (forall b. v b -> f (expr v' b)) -> expr v a -> f (expr v' a)
+
+  bindVars' :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
+  bindVars' f = runIdentity . bindVars (Identity . f)
 
 -- | Some operators can be evaluated in particular contexts.
 --
@@ -141,19 +147,27 @@ _OpS = prism' OpS $ \case
   Op0 _ -> Nothing
   OpS x -> Just x
 
+choiceToUnion :: OpChoice ops t a -> Union (AsOp t a) ops
+choiceToUnion = \case
+  Op0 x -> This (AsOp x)
+  OpS x -> That (choiceToUnion x)
+
+unionToChoice :: Union (AsOp t a) ops -> OpChoice ops t a
+unionToChoice = \case
+  This (AsOp x) -> Op0 x
+  That x -> OpS (unionToChoice x)
+
 noOps :: OpChoice '[] t a -> x
 noOps = \case
 
 instance Operator (OpChoice '[]) where
-  htraverseOp _ x = case x of {}
-    -- absurd
+  htraverseOp _ = noOps
 
 instance EvalOp f t (OpChoice '[]) where
-  evalOp x = case x of {}
-    -- absurd
+  evalOp _ = noOps
 
 instance HigherEq (OpChoice '[]) where
-  liftHigherEq _ _ _ _ = error "absurd"
+  liftHigherEq _ _ _ = noOps
 
 instance (Operator op, Operator (OpChoice ops)) => Operator (OpChoice (op : ops)) where
   htraverseOp f = \case
@@ -175,29 +189,28 @@ instance (HigherEq (OpChoice ops), Eq1 t) => Eq1 (OpChoice ops t) where liftEq =
 instance (Eq1 (OpChoice ops t), Eq a) => Eq (OpChoice ops t a) where (==) = liftEq (==)
 
 
+newtype AsOp (t :: * -> *) a op = AsOp (op t a)
+
+makeWrapped ''AsOp
+
+_OpChoice :: Iso (OpChoice ops t a) (OpChoice ops' t' a') (Union (AsOp t a) ops) (Union (AsOp t' a') ops')
+_OpChoice = iso choiceToUnion unionToChoice
+
 -- | This class provides a low-boilerplate way of lifting individual operators
 -- into a union, and extracting operators from a union.
 class ChooseOp op ops where
   -- | Project a single operator from a union which contains it.
   chooseOp :: Prism' (OpChoice ops t a) (op t a)
 
-instance {-# OVERLAPPING #-} ChooseOp op (op : ops) where
-  chooseOp = _Op0
-
-instance {-# OVERLAPPABLE #-} ChooseOp op ops => ChooseOp op (op' : ops) where
-  chooseOp = _OpS . chooseOp
+instance UElem op ops i => ChooseOp op ops where
+  chooseOp = _OpChoice . uprism . _Wrapped
 
 
--- class SublistOp ops1 ops2 where
---   sublistOp :: Prism' (OpChoice ops2 t a) (OpChoice ops1 t a)
+class SubsetOp ops1 ops2 where
+  subsetOp :: Prism' (OpChoice ops2 t a) (OpChoice ops1 t a)
 
--- instance SublistOp '[] ops where
---   sublistOp = prism' noOps (const Nothing)
-
--- instance SublistOp ops1 ops2 => SublistOp (op : ops1) (op : ops2) where
---   sublistOp = prism' into _
---     where into (Op0 x) = Op0 x
---           into (OpS x) = OpS (x ^. sublistOp)
+instance USubset ops1 ops2 is => SubsetOp ops1 ops2 where
+  subsetOp = _OpChoice . usubset . from _OpChoice
 
 --------------------------------------------------------------------------------
 --  Lifting simple functors into operators
@@ -282,7 +295,7 @@ instance (Operator op) => Substitutive (Expr op) where
 
   bindVars f = \case
     EVar x -> f x
-    EOp op -> EOp $ hmapOp (bindVars f) op
+    EOp op -> EOp <$> htraverseOp (bindVars f) op
 
 
 -- | It turns out an expression can be treated as an operator. "Variables"
@@ -347,7 +360,7 @@ instance (Operator (OpChoice ops)) => Operator (Expr' ops) where
 instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
   pureVar = Expr' . pureVar
 
-  bindVars f = Expr' . bindVars (getExpr' . f) . getExpr'
+  bindVars f = fmap Expr' . bindVars (fmap getExpr' . f) . getExpr'
 
 instance (EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
   evalOp f = evalOp f . getExpr'

@@ -25,7 +25,6 @@ library
                      , Language.Expression.Operators
                      , Language.Expression.Pretty
                      , Language.Expression.SBV
-                     , Language.Expression.Unknown
 
                      , Language.Verification
                      , Language.Verification.Conditions
@@ -48,6 +47,7 @@ library
                      , lens >= 4.10 && < 5
                      , sbv >= 7.0 && < 8
                      , constraints
+                     , union >= 0.1.1 && < 0.2
   -- hs-source-dirs:      
   default-language:    Haskell2010
   ghc-options:         -Wall

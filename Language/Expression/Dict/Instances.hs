@@ -17,7 +17,6 @@ import           Data.SBV                           hiding (( # ))
 
 import           Language.Expression.Constraints
 import           Language.Expression.Dict
-import           Language.Expression.Unknown
 
 --------------------------------------------------------------------------------
 --  Boolean
@@ -292,7 +291,6 @@ standardNumInstances =
 - from each integral to each floating point type;
 - between each pair of integral types;
 - from 'Double' to 'Float';
-- from 'Unknown' to each other mentioned type.
 -}
 standardCoerceInstances :: Typemap2 CoerceDict
 standardCoerceInstances =
@@ -310,30 +308,11 @@ standardCoerceInstances =
     ++ (integerToDouble ..* fromIntegrals)
     -- Converting from each integral type to 'Float'
     ++ (integerToFloat ..* fromIntegrals)
-    -- Converting 'Unknown' to anything
-    ++ fromUnknowns
     )
   where
     betweenIntegrals = do
       to <- toIntegrals
       to ..* fromIntegrals
-
-    fromUnknowns :: [Exists2 CoerceDict]
-    fromUnknowns =
-      [ Exists2 (fromUnknown' :: CoerceDict Unknown Integer)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Float)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Double)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Int)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Int8)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Int16)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Int32)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Int64)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Word)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Word8)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Word16)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Word32)
-      , Exists2 (fromUnknown' :: CoerceDict Unknown Word64)
-      ]
 
     fromIntegrals :: [Exists2 CoerceDict]
     fromIntegrals =
@@ -388,9 +367,6 @@ standardCoerceInstances =
 
     fromIntegral' :: (Integral a, Integral b) => CoerceDict a b
     fromIntegral' = CoerceDict fromIntegral
-
-    fromUnknown' :: CoerceDict Unknown a
-    fromUnknown' = CoerceDict fromUnknown
 
     -- TODO: Implementing this (transitive closure of a set of coercions) will
     -- make things much nicer.

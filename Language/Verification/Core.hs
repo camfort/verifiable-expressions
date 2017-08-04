@@ -31,7 +31,7 @@ import           Language.Expression
 import           Language.Expression.Dict    (BooleanDict, HasTypemap)
 import           Language.Expression.DSL     (PropOver)
 import           Language.Expression.SBV
-import           Language.Expression.Unknown
+import           Language.Expression.Classes
 
 --------------------------------------------------------------------------------
 --  Verifiable Types
@@ -51,11 +51,10 @@ data VerifierSymbol f
   | VSReal (f AlgReal)
   | VSFloat (f Float)
   | VSDouble (f Double)
-  | VSUnknown (f Unknown)
 
 makePrisms ''VerifierSymbol
 
-class Typeable a => Verifiable a where
+class SymValue a => Verifiable a where
   _Symbol :: Prism' (VerifierSymbol f) (f a)
 
 instance Verifiable Integer where _Symbol = _VSInteger
@@ -71,7 +70,6 @@ instance Verifiable Bool where _Symbol = _VSBool
 instance Verifiable Float where _Symbol = _VSFloat
 instance Verifiable Double where _Symbol = _VSDouble
 instance Verifiable AlgReal where _Symbol = _VSReal
-instance Verifiable Unknown where _Symbol = _VSUnknown
 
 --------------------------------------------------------------------------------
 --  Variables
@@ -85,6 +83,9 @@ instance Location String where locationName = id
 -- | A variable with locations in @l@ representing values of type @a@.
 data Var l a where
   Var :: (SymWord a, Verifiable a) => l -> Var l a
+
+varName :: Location l => Var l a -> String
+varName (Var x) = locationName x
 
 --------------------------------------------------------------------------------
 --  Verifier Monad

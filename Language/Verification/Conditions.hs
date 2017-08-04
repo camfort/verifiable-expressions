@@ -59,7 +59,7 @@ data AnnSeq expr var cmd
 subAssignment
   :: (Substitutive expr, Location l)
   => Assignment expr (Var l) -> PropOver (expr (Var l)) a -> PropOver (expr (Var l)) a
-subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars (subVar newExpr targetVar))
+subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr targetVar))
 
 
 -- | Chains substitutions, substituting using each assignment in the given list

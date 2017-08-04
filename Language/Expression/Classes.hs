@@ -23,14 +23,14 @@ import qualified Data.SBV      as S
 --------------------------------------------------------------------------------
 
 -- | A type that can be represented by symbolic values.
-class Typeable a => SymValue a where
+class (Typeable a, Eq a) => SymValue a where
   prettyValue :: a -> String
+  prettyValue = prettyValuePrec 0
 
   prettyValuePrec :: Int -> a -> String
-  prettyValuePrec _ = prettyValue
 
-  default prettyValue :: Show a => a -> String
-  prettyValue = show
+  default prettyValuePrec :: Show a => Int -> a -> String
+  prettyValuePrec p x = showsPrec p x ""
 
 instance SymValue Bool
 instance SymValue Integer
@@ -79,6 +79,8 @@ instance SymLit AlgReal where toSbv = error "AlgReal to SBV"
 
 -- | Generalized booleans.
 class SymValue b => SymBool b where
+  symFromBool :: Bool -> b
+
   symAnd :: b -> b -> b
   symNot :: b -> b
 
@@ -92,6 +94,7 @@ class SymValue b => SymBool b where
   symEquiv x y = (x `symImpl` y) `symAnd` (y `symImpl` x)
 
 instance SymBool Bool where
+  symFromBool = id
   symAnd = (&&)
   symOr = (||)
   symNot = not

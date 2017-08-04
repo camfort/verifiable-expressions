@@ -6,6 +6,7 @@ module Language.While.Pretty where
 
 import           Data.List             (intercalate)
 
+import           Language.Expression hiding (Expr)
 import           Language.While.Prop   as P
 import           Language.While.Syntax as S
 
@@ -19,6 +20,7 @@ instance Pretty a => Pretty (ExprOp a) where
           OAdd a b -> a ++ " + " ++ b
           OMul a b -> "(" ++ a ++ ") * (" ++ b ++ ")"
           OSub a b -> "(" ++ a ++ ") - (" ++ b ++ ")"
+          S.OLit x -> show x
     in combine . fmap pretty
 
 instance Pretty a => Pretty (ArithOp a) where
@@ -45,13 +47,14 @@ instance Pretty a => Pretty (PropOp a) where
           P.OImpl a b -> "(" ++ a ++ ") -> (" ++ b ++ ")"
           P.OEquiv a b -> "(" ++ a ++ ") <-> (" ++ b ++ ")"
           P.ONot a -> "! (" ++ a ++ ")"
+          P.OLit True -> "T"
+          P.OLit False -> "F"
     in combine . fmap pretty
 
 instance Pretty l => Pretty (Expr l) where
   pretty = \case
-    EOp op -> pretty op
-    EVar loc -> pretty loc
-    ELit x -> show x
+    SOp op -> pretty op
+    SVar loc -> pretty loc
 
 instance Pretty l => Pretty (Bexpr l) where
   pretty = \case
@@ -60,10 +63,8 @@ instance Pretty l => Pretty (Bexpr l) where
 
 instance Pretty a => Pretty (Prop a) where
   pretty = \case
-    PEmbed a -> pretty a
-    POp op -> pretty op
-    PLit True -> "T"
-    PLit False -> "F"
+    SVar a -> pretty a
+    SOp op -> pretty op
 
 instance Pretty l => Pretty (Maybe l) where
   pretty = \case

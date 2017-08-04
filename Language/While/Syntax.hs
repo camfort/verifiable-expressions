@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE TypeSynonymInstances      #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE DeriveTraversable  #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE PatternSynonyms    #-}
@@ -18,11 +20,13 @@ import           Control.Monad.State
 
 import           Control.Lens        hiding (op)
 
+import Language.Expression (SimpleExpr(..))
+
 --------------------------------------------------------------------------------
 --  Arithmetic expressions
 --------------------------------------------------------------------------------
 
-data ExprOp a = OAdd a a | OMul a a | OSub a a
+data ExprOp a = OAdd a a | OMul a a | OSub a a | OLit Integer
   deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
 
 evalExprOp :: (Num n) => ExprOp n -> n
@@ -30,36 +34,22 @@ evalExprOp = \case
   OAdd x y -> x + y
   OMul x y -> x * y
   OSub x y -> x - y
+  OLit x -> fromInteger x
 
-data Expr l
-  = EOp (ExprOp (Expr l))
-  | EVar l
-  | ELit Integer
-  deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
+type Expr = SimpleExpr ExprOp
 
 
 pattern EAdd :: Expr t -> Expr t -> Expr t
-pattern EAdd a b = EOp (OAdd a b)
+pattern EAdd a b = SOp (OAdd a b)
 
 pattern EMul :: Expr t -> Expr t -> Expr t
-pattern EMul a b = EOp (OMul a b)
+pattern EMul a b = SOp (OMul a b)
 
 pattern ESub :: Expr t -> Expr t -> Expr t
-pattern ESub a b = EOp (OSub a b)
-
-
-instance Applicative Expr where
-  pure = return
-  (<*>) = ap
-
-instance Monad Expr where
-  return = EVar
-  EOp op >>= f = EOp (fmap (>>= f) op)
-  EVar x >>= f = f x
-  ELit x >>= _ = ELit x
+pattern ESub a b = SOp (OSub a b)
 
 instance Num (Expr l) where
-  fromInteger = ELit
+  fromInteger = SOp . OLit
 
   (+) = EAdd
   (*) = EMul
@@ -68,7 +58,7 @@ instance Num (Expr l) where
   signum = error "can't take signum of expressions"
 
 instance IsString s => IsString (Expr s) where
-  fromString = EVar . fromString
+  fromString = SVar . fromString
 
 --------------------------------------------------------------------------------
 --  Boolean expressions
@@ -144,7 +134,6 @@ data Command l a
   deriving (Show, Data, Typeable, Functor, Foldable, Traversable)
 
 
-makePrisms ''Expr
 makePrisms ''Bexpr
 makePrisms ''Command
 
@@ -158,9 +147,8 @@ data StepResult a
 
 evalExpr :: (Num n, Applicative f) => (l -> f n) -> Expr l -> f n
 evalExpr env = \case
-  EOp op -> evalExprOp <$> traverse (evalExpr env) op
-  EVar loc -> env loc
-  ELit val -> pure (fromInteger val)
+  SOp op -> evalExprOp <$> traverse (evalExpr env) op
+  SVar loc -> env loc
 
 
 evalBexprGeneral

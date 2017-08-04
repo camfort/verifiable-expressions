@@ -16,30 +16,32 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Language.While.Syntax
-                     , Language.While.Syntax.Sugar
-                     , Language.While.Hoare
-                     , Language.While.Hoare.Prover
-                     , Language.While.Prop
-                     , Language.While.Pretty
-                     , Language.While.Test
-
-                     , Language.Verification.Conditions
-                     , Language.Verification.Core
-                     , Language.Verification
-                     , Language.Verification.Test
-
-                     , Language.Expression
-                     , Language.Expression.Pretty
+  exposed-modules:     Language.Expression
                      , Language.Expression.Classes
-                     , Language.Expression.DSL
-                     , Language.Expression.SBV
+                     , Language.Expression.Constraints
                      , Language.Expression.Dict
                      , Language.Expression.Dict.Instances
+                     , Language.Expression.DSL
                      , Language.Expression.Operators
+                     , Language.Expression.Pretty
+                     , Language.Expression.SBV
+                     , Language.Expression.Unknown
+
+                     , Language.Verification
+                     , Language.Verification.Conditions
+                     , Language.Verification.Core
+                     , Language.Verification.Test
+
+                     , Language.While.Hoare
+                     , Language.While.Hoare.Prover
+                     , Language.While.Pretty
+                     , Language.While.Prop
+                     , Language.While.Syntax
+                     , Language.While.Syntax.Sugar
+                     , Language.While.Test
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.9 && <4.10
+  build-depends:       base >=4.9 && <4.11
                      , containers >= 0.5.7 && < 0.6
                      , transformers >= 0.5 && < 0.6
                      , mtl >= 2.0 && < 3

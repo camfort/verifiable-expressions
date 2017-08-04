@@ -23,8 +23,8 @@ var' = var . Var
 
 testProp :: Prop StandardOps (Var String) Bool
 testProp =
-  expr (var' "x" .>= lit (0 :: Integer)) .->
-  expr (var' "x" .* lit (5 :: Integer) .<= var' "x" .* lit 10)
+  expr (var' "x" .>= elit (0 :: Integer)) *->
+  expr (var' "x" .* elit (5 :: Integer) .<= var' "x" .* elit 10)
 
 --------------------------------------------------------------------------------
 --  Testing interaction with the verifier

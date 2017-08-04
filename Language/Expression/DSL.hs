@@ -16,14 +16,19 @@ module Language.Expression.DSL
   -- * Lifting
   , var
   , expr
+  -- * Propositions
+  , plit
+  , pnot
+  , (*&&)
+  , (*||)
+  , (*->)
+  , (*<->)
   -- * Literals
-  , lit
+  , elit
   -- * Booleans
   , enot
   , (.&&)
   , (.||)
-  , (.->)
-  , (.<->)
   -- * Numeric
   , (.+)
   , (.-)
@@ -36,13 +41,8 @@ module Language.Expression.DSL
   , (.>)
   , (.<=)
   , (.>=)
-  -- * Propositions
-  , plit
-  , pnot
-  , (*&&)
-  , (*||)
-  , (*->)
-  , (*<->)
+  -- * Coercion
+  , ecoerce
   -- * Classes
   , module Classes
   ) where
@@ -54,10 +54,13 @@ import           Language.Expression.Classes   as Classes
 import           Language.Expression.Operators
 
 -- | Propositions over general expressions.
-type PropOver expr a = Expr' '[BoolOp] expr a
+type PropOver = Expr LogicOp
 
 -- | Propositions over expressions with the given list of operators.
-type Prop ops v a = Expr' '[BoolOp] (Expr' ops v) a
+type Prop ops v = Expr LogicOp (Expr' ops v)
+
+
+-- type SimpleProp op expr a = 
 
 --------------------------------------------------------------------------------
 --  Lifting
@@ -69,15 +72,42 @@ var = Expr' . EVar
 
 -- | Lift an expression into the land of propositions.
 expr :: expr a -> PropOver expr a
-expr = Expr' . EVar
+expr = EVar
+
+--------------------------------------------------------------------------------
+--  Proposition Operators
+--------------------------------------------------------------------------------
+
+infixl 3 *&&
+infixl 2 *||
+infixr 1 *->
+infix 1 *<->
+
+plit :: SymBool b => Bool -> PropOver expr b
+plit = EOp . LogLit
+
+pnot :: SymBool b => PropOver expr b -> PropOver expr b
+pnot = EOp . LogNot
+
+(*&&) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
+(*&&) = EOp ... LogAnd
+
+(*||) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
+(*||) = EOp ... LogOr
+
+(*->) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
+(*->) = EOp ... LogImpl
+
+(*<->) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
+(*<->) = EOp ... LogEquiv
 
 --------------------------------------------------------------------------------
 --  Literal Operators
 --------------------------------------------------------------------------------
 
 -- | Embed a literal into an expression.
-lit :: (ChooseOp LitOp ops, SymLit a) => a -> Expr' ops t a
-lit = Expr' . EOp . review chooseOp . OpLit
+elit :: (ChooseOp LitOp ops, SymLit a) => a -> Expr' ops t a
+elit = Expr' . EOp . review chooseOp . OpLit
 
 --------------------------------------------------------------------------------
 --  Boolean Operators
@@ -85,23 +115,15 @@ lit = Expr' . EOp . review chooseOp . OpLit
 
 infixl 3 .&&
 infixl 2 .||
-infixr 1 .->
-infix 1 .<->
 
 enot :: (SymBool a, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a
-enot = liftOp . OpNot
+enot = intoChoice . OpNot
 
 (.&&) :: (SymBool a, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.&&) = liftOp ... OpAnd
+(.&&) = intoChoice ... OpAnd
 
 (.||) :: (SymBool a, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.||) = liftOp ... OpOr
-
-(.->) :: (SymBool a, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.->) = liftOp ... OpImpl
-
-(.<->) :: (SymBool a, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.<->) = liftOp ... OpEquiv
+(.||) = intoChoice ... OpOr
 
 --------------------------------------------------------------------------------
 --  Numeric Operators
@@ -112,13 +134,13 @@ infixl 5 .+
 infixl 5 .-
 
 (.+) :: (SymNum a, ChooseOp NumOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.+) = liftOp ... OpAdd
+(.+) = intoChoice ... OpAdd
 
 (.-) :: (SymNum a, ChooseOp NumOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.-) = liftOp ... OpSub
+(.-) = intoChoice ... OpSub
 
 (.*) :: (SymNum a, ChooseOp NumOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v a
-(.*) = liftOp ... OpMul
+(.*) = intoChoice ... OpMul
 
 --------------------------------------------------------------------------------
 --  Equality Operators
@@ -128,7 +150,7 @@ infix 4 .==
 infix 4 ./=
 
 (.==) :: (SymEq b a, ChooseOp EqOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
-(.==) = liftOp ... OpEq
+(.==) = intoChoice ... OpEq
 
 (./=) :: (SymEq b a, ChooseOp EqOp ops, ChooseOp BoolOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
 (./=) = enot ... (.==)
@@ -143,50 +165,30 @@ infix 4 .>
 infix 4 .>=
 
 (.<) :: (SymOrd b a, ChooseOp OrdOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
-(.<) = liftOp ... OpLT
+(.<) = intoChoice ... OpLT
 
 (.<=) :: (SymOrd b a, ChooseOp OrdOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
-(.<=) = liftOp ... OpLE
+(.<=) = intoChoice ... OpLE
 
 (.>) :: (SymOrd b a, ChooseOp OrdOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
-(.>) = liftOp ... OpGT
+(.>) = intoChoice ... OpGT
 
 (.>=) :: (SymOrd b a, ChooseOp OrdOp ops) => Expr' ops v a -> Expr' ops v a -> Expr' ops v b
-(.>=) = liftOp ... OpGE
+(.>=) = intoChoice ... OpGE
 
 --------------------------------------------------------------------------------
---  Proposition Operators
+--  Coercion Operators
 --------------------------------------------------------------------------------
 
-infixl 3 *&&
-infixl 2 *||
-infixr 1 *->
-infix 1 *<->
-
-plit :: (SymLit a, ChooseOp LitOp ops) => a -> PropOver (Expr' ops t) a
-plit = expr . lit
-
-pnot :: SymBool b => PropOver expr b -> PropOver expr b
-pnot = enot
-
-(*&&) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
-(*&&) = (.&&)
-
-(*||) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
-(*||) = (.||)
-
-(*->) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
-(*->) = (.->)
-
-(*<->) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
-(*<->) = (.<->)
+ecoerce :: (SymValue a, SymValue b, ChooseOp CoerceOp ops) => Expr' ops v a -> Expr' ops v b
+ecoerce = intoChoice . OpCoerce
 
 --------------------------------------------------------------------------------
 --  Internal Combinators
 --------------------------------------------------------------------------------
 
-liftOp :: (Operator op, ChooseOp op ops) => op (Expr' ops v) a -> Expr' ops v a
-liftOp  = Expr' . EOp . review chooseOp . hmapOp getExpr'
+intoChoice :: (Operator op, ChooseOp op ops) => op (Expr' ops v) a -> Expr' ops v a
+intoChoice  = Expr' . EOp . review chooseOp . hmapOp getExpr'
 
 (...) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 (f ... g) x y = f (g x y)

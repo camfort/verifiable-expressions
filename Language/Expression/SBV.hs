@@ -23,10 +23,10 @@ module Language.Expression.SBV
   , runDefaultEvalT
   -- * Evaluation context
   , EvalContext(..)
-  , numDicts
-  , eqDicts
-  , ordDicts
-  , booleanDicts
+  , numTypemap
+  , eqTypemap
+  , ordTypemap
+  , booleanTypemap
   , defaultEvalContext
   -- * Combinators for writing 'EvalOp' instances
   , unaryOpFromDict
@@ -34,7 +34,6 @@ module Language.Expression.SBV
   , binaryOpFromDict2
   ) where
 
-import           Data.Data                          (Data)
 import           Data.Typeable                      (Proxy (..), TypeRep,
                                                      Typeable, typeRep)
 
@@ -45,6 +44,7 @@ import           Control.Monad.Reader
 import           Data.SBV                           (SBV)
 
 import           Language.Expression
+import           Language.Expression.Constraints
 import           Language.Expression.Dict
 import           Language.Expression.Dict.Instances
 import           Language.Expression.Operators
@@ -57,10 +57,10 @@ import           Language.Expression.Operators
 -- use operations other than the standard ones).
 data EvalContext =
   EvalContext
-  { _numDicts     :: Dictmap NumDict
-  , _eqDicts      :: Dictmap2 EqDict
-  , _ordDicts     :: Dictmap2 OrdDict
-  , _booleanDicts :: Dictmap BooleanDict
+  { _numTypemap     :: Typemap NumDict
+  , _eqTypemap      :: Typemap2 EqDict
+  , _ordTypemap     :: Typemap2 OrdDict
+  , _booleanTypemap :: Typemap BooleanDict
   }
 
 makeLenses ''EvalContext
@@ -70,23 +70,23 @@ makeLenses ''EvalContext
 defaultEvalContext :: EvalContext
 defaultEvalContext =
   EvalContext
-  { _numDicts = standardNumInstances
-  , _eqDicts = standardEqInstances
-  , _ordDicts = standardOrdInstances
-  , _booleanDicts = standardBooleanInstances
+  { _numTypemap = standardNumInstances
+  , _eqTypemap = standardEqInstances
+  , _ordTypemap = standardOrdInstances
+  , _booleanTypemap = standardBooleanInstances
   }
 
-instance HasDicts NumDict EvalContext where
-  dicts = numDicts
+instance HasTypemap NumDict EvalContext where
+  typemap = numTypemap
 
-instance HasDicts2 EqDict EvalContext where
-  dicts2 = eqDicts
+instance HasTypemap2 EqDict EvalContext where
+  typemap2 = eqTypemap
 
-instance HasDicts2 OrdDict EvalContext where
-  dicts2 = ordDicts
+instance HasTypemap2 OrdDict EvalContext where
+  typemap2 = ordTypemap
 
-instance HasDicts BooleanDict EvalContext where
-  dicts = booleanDicts
+instance HasTypemap BooleanDict EvalContext where
+  typemap = booleanTypemap
 
 --------------------------------------------------------------------------------
 --  Evaluation monad
@@ -97,7 +97,7 @@ instance HasDicts BooleanDict EvalContext where
 data EvalError
   = MissingInstance String [TypeRep]
   -- ^ The dictionary was missing an instance for these types.
-  deriving (Show, Eq, Ord, Data, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
 -- | The dictionary was missing an instance for this type.
 missingInstance :: (MonadError EvalError m) => String -> TypeRep -> m a
@@ -150,39 +150,55 @@ runDefaultEvalT action = runEvalT action defaultEvalContext
 
 -- | Expressions containing boolean operations may be evaluated to symbolic
 -- 'SBV' values.
-instance (Monad m, HasDicts BooleanDict r) => EvalOp (EvalT r m) SBV BoolOp where
+instance (Monad m, HasTypemap BooleanDict r) => EvalOp (EvalT r m) SBV BoolOp where
   evalOp f = \case
     OpNot x -> unaryOpFromDict (missingInstance "Boolean") dictNot (f x)
     OpAnd x y -> binaryOpFromDict (missingInstance "Boolean") dictAnd (f x) (f y)
     OpOr x y -> binaryOpFromDict (missingInstance "Boolean") dictOr (f x) (f y)
-    OpImpl x y -> binaryOpFromDict (missingInstance "Boolean") dictImpl (f x) (f y)
-    OpEquiv x y -> binaryOpFromDict (missingInstance "Boolean") dictEquiv (f x) (f y)
+
+
+-- | Expressions containing boolean operations may be evaluated to symbolic
+-- 'SBV' values.
+instance (Monad m, HasTypemap BooleanDict r) => EvalOp (EvalT r m) SBV LogicOp where
+  evalOp f = \case
+    LogLit b -> unaryOpFromDict (missingInstance "Boolean") dictFromBool (pure b)
+    LogNot x -> unaryOpFromDict (missingInstance "Boolean") dictNot (f x)
+    LogAnd x y -> binaryOpFromDict (missingInstance "Boolean") dictAnd (f x) (f y)
+    LogOr x y -> binaryOpFromDict (missingInstance "Boolean") dictOr (f x) (f y)
+    LogImpl x y -> binaryOpFromDict (missingInstance "Boolean") dictImpl (f x) (f y)
+    LogEquiv x y -> binaryOpFromDict (missingInstance "Boolean") dictEquiv (f x) (f y)
 
 
 -- | Expressions containing numeric operations may be evaluated to symbolic
 -- 'SBV' values.
-instance (Monad m, HasDicts NumDict r) => EvalOp (EvalT r m) SBV NumOp where
+instance (Monad m, HasTypemap NumDict r) => EvalOp (EvalT r m) SBV NumOp where
   evalOp f = \case
     OpAdd x y -> binaryOpFromDict (missingInstance "Num") dictAdd (f x) (f y)
     OpMul x y -> binaryOpFromDict (missingInstance "Num") dictMul (f x) (f y)
-    OpSub x y -> binaryOpFromDict (missingInstance "Num") dictSub (f x) (f y)
+    OpSub x y -> binaryOpFromDict (missingInstance "Num") typemapub (f x) (f y)
 
 
 -- | Expressions containing equality operations may be evaluated to symbolic
 -- 'SBV' values.
-instance (Monad m, HasDicts2 EqDict r) => EvalOp (EvalT r m) SBV EqOp where
+instance (Monad m, HasTypemap2 EqDict r) => EvalOp (EvalT r m) SBV EqOp where
   evalOp f = \case
     OpEq x y -> binaryOpFromDict2 (missingInstance2 "Eq") dictEq (f x) (f y)
 
 
 -- | Expressions containing ordering operations may be evaluated to symbolic
 -- 'SBV' values.
-instance (Monad m, HasDicts2 OrdDict r) => EvalOp (EvalT r m) SBV OrdOp where
+instance (Monad m, HasTypemap2 OrdDict r) => EvalOp (EvalT r m) SBV OrdOp where
   evalOp f = \case
     OpLT x y -> binaryOpFromDict2 (missingInstance2 "Ord") dictLt (f x) (f y)
     OpLE x y -> binaryOpFromDict2 (missingInstance2 "Ord") dictLe (f x) (f y)
     OpGT x y -> binaryOpFromDict2 (missingInstance2 "Ord") dictGt (f x) (f y)
     OpGE x y -> binaryOpFromDict2 (missingInstance2 "Ord") dictGe (f x) (f y)
+
+-- | Expressions containing coercion operations may be evaluated to symbolic
+-- 'SBV' values.
+instance (Monad m, HasTypemap2 CoerceDict r) => EvalOp (EvalT r m) SBV CoerceOp where
+  evalOp f = \case
+    OpCoerce x -> unaryOpFromDict2 (missingInstance2 "Ord") dictCoerce (f x)
 
 --------------------------------------------------------------------------------
 --  Combinators
@@ -198,7 +214,7 @@ instance (Monad m, HasDicts2 OrdDict r) => EvalOp (EvalT r m) SBV OrdOp where
 -- This is useful for providing operator evaluation instances.
 unaryOpFromDict
   :: forall dict r m a b.
-     (HasDicts dict r,
+     (HasTypemap dict r,
       MonadReader r m,
       Typeable a,
       Typeable b)
@@ -209,10 +225,35 @@ unaryOpFromDict
   -- ^ A lens which extracts the desired operation from the dictionary.
   -> m a -> m b
 unaryOpFromDict err l x =
-  do mOp <- preview (dictFor Proxy . l)
+  do mOp <- preview (instanceFor Proxy . l)
      case mOp of
        Just o -> o <$> x
        Nothing -> err (typeRep (Proxy :: Proxy a))
+
+-- | In a monad where we have access to 2-dictionaries of a particular type
+-- @dict@, look for @dict a b@ which provides operations for the given types @a@ and @b@.
+-- If this 2-dictionary exists, extract the desired unary operation and lift it
+-- into the monad. Otherwise, report that it doesn't exist with the given error
+-- reporting function.
+--
+-- This is useful for providing operator evaluation instances.
+unaryOpFromDict2
+  :: forall dict r m a b.
+     (HasTypemap2 dict r,
+      MonadReader r m,
+      Typeable a,
+      Typeable b)
+  => (forall x. TypeRep -> TypeRep -> m x)
+  -- ^ Given a representation of the type @a@, create an error that reports that
+  -- no instance could be found.
+  -> Lens' (dict a b) (a -> b)
+  -- ^ A lens which extracts the desired operation from the dictionary.
+  -> m a -> m b
+unaryOpFromDict2 err l x =
+  do mOp <- preview (instance2For Proxy Proxy . l)
+     case mOp of
+       Just o -> o <$> x
+       Nothing -> err (typeRep (Proxy :: Proxy a)) (typeRep (Proxy :: Proxy b))
 
 -- | In a monad where we have access to dictionaries of a particular type
 -- @dict@, look for @dict a@ which provides operations for the given type @a@.
@@ -223,7 +264,7 @@ unaryOpFromDict err l x =
 -- This is useful for providing operator evaluation instances.
 binaryOpFromDict
   :: forall dict r m a.
-     (HasDicts dict r,
+     (HasTypemap dict r,
       MonadReader r m,
       Typeable a)
   => (forall x. TypeRep -> m x)
@@ -233,7 +274,7 @@ binaryOpFromDict
   -- ^ A lens which extracts the desired operation from the dictionary.
   -> m a -> m a -> m a
 binaryOpFromDict err l x y =
-  do mOp <- preview (dictFor Proxy . l)
+  do mOp <- preview (instanceFor Proxy . l)
      case mOp of
        Just o -> o <$> x <*> y
        Nothing -> err (typeRep (Proxy :: Proxy a))
@@ -248,7 +289,7 @@ binaryOpFromDict err l x y =
 -- This is useful for providing operator evaluation instances.
 binaryOpFromDict2
   :: forall dict r m a b.
-     (HasDicts2 dict r,
+     (HasTypemap2 dict r,
       MonadReader r m,
       Typeable a,
       Typeable b)
@@ -259,7 +300,7 @@ binaryOpFromDict2
   -- ^ A lens which extracts the desired operation from the dictionary.
   -> m a -> m a -> m b
 binaryOpFromDict2 err l x y =
-  do mOp <- preview (dict2For Proxy Proxy . l)
+  do mOp <- preview (instance2For Proxy Proxy . l)
      case mOp of
        Just o -> o <$> x <*> y
        Nothing -> err (typeRep (Proxy :: Proxy a)) (typeRep (Proxy :: Proxy b))

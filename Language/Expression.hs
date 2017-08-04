@@ -1,4 +1,8 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE EmptyCase                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -20,16 +24,48 @@ module Language.Expression
   , Substitutive(..)
   , EvalOp(..)
   , evalOp'
+  , HigherEq(..)
+  , liftEqFromHigher
+
   -- * Expressions
   , Expr(..)
+  , _EVar
+  , _EOp
   , Expr'(..)
+  , _EVar'
+  , _EOp'
+  , traverseOperators
+  , mapOperators
+
   -- * Operator union
   , OpChoice(..)
   , ChooseOp(..)
+
+  -- * Lifting functors
+  , LiftOp(LiftOp)
+  , liftOp
+  , unliftOp
+
+  -- * Restricted Operators
+  , RestrictOp(..)
+  , unrestrictOp
+
+  -- * Simple Expressions
+  , SimpleExpr(..)
+  , _SVar
+  , _SOp
+  , _SimpleExpr
+  , _SimpleExpr'
   ) where
 
-import           Control.Lens          (Prism', prism')
+import           Data.Data             (Typeable, Data, (:~:)(..))
+import           Control.Monad (ap)
+
 import           Data.Functor.Identity
+import           Data.Functor.Compose
+import           Data.Functor.Classes
+
+import           Control.Lens hiding (op)
 
 --------------------------------------------------------------------------------
 --  Type Classes
@@ -71,6 +107,16 @@ class (Operator op) => EvalOp f g op where
 evalOp' :: EvalOp Identity g op => (forall b. t b -> g b) -> op t a -> g a
 evalOp' f = runIdentity . evalOp (Identity . f)
 
+
+class HigherEq op where
+  liftHigherEq :: (forall x y. (x -> y -> Bool) -> f x -> g y -> Bool) -> (a -> b -> Bool) -> op f a -> op g b -> Bool
+
+liftEqFromHigher :: (HigherEq op, Eq1 t) => (a -> b -> Bool) -> op t a -> op t b -> Bool
+liftEqFromHigher = liftHigherEq liftEq
+
+instance (Eq1 f) => HigherEq (Compose f) where
+  liftHigherEq le eq (Compose x) (Compose y) = liftEq (le eq) x y
+
 --------------------------------------------------------------------------------
 --  Operator List Union
 --------------------------------------------------------------------------------
@@ -83,6 +129,7 @@ evalOp' f = runIdentity . evalOp (Identity . f)
 data OpChoice ops (t :: * -> *) a where
   Op0 :: op t a -> OpChoice (op : ops) t a
   OpS :: OpChoice ops t a -> OpChoice (op : ops) t a
+  deriving (Typeable)
 
 _Op0 :: Prism' (OpChoice (op : ops) t a) (op t a)
 _Op0 = prism' Op0 $ \case
@@ -94,6 +141,9 @@ _OpS = prism' OpS $ \case
   Op0 _ -> Nothing
   OpS x -> Just x
 
+noOps :: OpChoice '[] t a -> x
+noOps = \case
+
 instance Operator (OpChoice '[]) where
   htraverseOp _ x = case x of {}
     -- absurd
@@ -101,6 +151,9 @@ instance Operator (OpChoice '[]) where
 instance EvalOp f t (OpChoice '[]) where
   evalOp x = case x of {}
     -- absurd
+
+instance HigherEq (OpChoice '[]) where
+  liftHigherEq _ _ _ _ = error "absurd"
 
 instance (Operator op, Operator (OpChoice ops)) => Operator (OpChoice (op : ops)) where
   htraverseOp f = \case
@@ -111,6 +164,16 @@ instance (EvalOp f t op, EvalOp f t (OpChoice ops)) => EvalOp f t (OpChoice (op 
   evalOp f = \case
     Op0 x -> evalOp f x
     OpS x -> evalOp f x
+
+instance (HigherEq op, HigherEq (OpChoice ops)) => HigherEq (OpChoice (op : ops)) where
+  liftHigherEq le eq (Op0 x) (Op0 y) = liftHigherEq le eq x y
+  liftHigherEq le eq (OpS x) (OpS y) = liftHigherEq le eq x y
+  liftHigherEq _ _ _ _ = False
+
+
+instance (HigherEq (OpChoice ops), Eq1 t) => Eq1 (OpChoice ops t) where liftEq = liftEqFromHigher
+instance (Eq1 (OpChoice ops t), Eq a) => Eq (OpChoice ops t a) where (==) = liftEq (==)
+
 
 -- | This class provides a low-boilerplate way of lifting individual operators
 -- into a union, and extracting operators from a union.
@@ -124,6 +187,66 @@ instance {-# OVERLAPPING #-} ChooseOp op (op : ops) where
 instance {-# OVERLAPPABLE #-} ChooseOp op ops => ChooseOp op (op' : ops) where
   chooseOp = _OpS . chooseOp
 
+
+-- class SublistOp ops1 ops2 where
+--   sublistOp :: Prism' (OpChoice ops2 t a) (OpChoice ops1 t a)
+
+-- instance SublistOp '[] ops where
+--   sublistOp = prism' noOps (const Nothing)
+
+-- instance SublistOp ops1 ops2 => SublistOp (op : ops1) (op : ops2) where
+--   sublistOp = prism' into _
+--     where into (Op0 x) = Op0 x
+--           into (OpS x) = OpS (x ^. sublistOp)
+
+--------------------------------------------------------------------------------
+--  Lifting simple functors into operators
+--------------------------------------------------------------------------------
+
+newtype LiftOp f t a = LiftOp { getLiftOp :: Compose f t a }
+  deriving (Typeable, Data, Show, Functor, Applicative, Foldable, Traversable)
+
+unliftOp :: LiftOp f g a -> f (g a)
+unliftOp = getCompose . getLiftOp
+
+liftOp :: f (t a) -> LiftOp f t a
+liftOp = LiftOp . Compose
+
+instance Traversable f => Operator (LiftOp f) where
+  htraverseOp f = fmap liftOp . traverse f . unliftOp
+
+instance (Eq1 f) => HigherEq (LiftOp f) where
+  liftHigherEq le eq (LiftOp x) (LiftOp y) = liftHigherEq le eq x y
+
+instance (Eq1 f, Eq1 t) => Eq1 (LiftOp f t) where liftEq = liftEqFromHigher
+
+instance (Eq1 f, Eq1 t, Eq a) => Eq (LiftOp f t a) where (==) = liftEq (==)
+
+--------------------------------------------------------------------------------
+--  Restricted Operators
+--------------------------------------------------------------------------------
+
+-- | @'RestrictOp' k op@ is an operator that behaves like @op@, but restricts
+-- its value types to those types @a@ for which a proof of @k a@ can be given.
+--
+-- For example, if @k@ is @(':~:') Integer@, then values must be of type
+-- 'Integer'.
+data RestrictOp k (op :: (* -> *) -> * -> *) t a = RestrictOp (k a) (op t a)
+
+instance Operator op => Operator (RestrictOp k op) where
+  htraverseOp f (RestrictOp k x) = RestrictOp k <$> htraverseOp f x
+
+instance (Eq1 k, HigherEq op) => HigherEq (RestrictOp k op) where
+  liftHigherEq le eq (RestrictOp x1 x2) (RestrictOp y1 y2) = liftEq eq x1 y1 && liftHigherEq le eq x2 y2
+
+instance (Eq1 k, Eq1 t, HigherEq op) => Eq1 (RestrictOp k op t) where liftEq = liftEqFromHigher
+
+instance (Eq1 k, Eq1 t, HigherEq op, Eq a) => Eq (RestrictOp k op t a) where (==) = eq1
+
+
+unrestrictOp :: RestrictOp k op t a -> op t a
+unrestrictOp (RestrictOp _ x) = x
+
 --------------------------------------------------------------------------------
 --  Expressions
 --------------------------------------------------------------------------------
@@ -135,6 +258,23 @@ instance {-# OVERLAPPABLE #-} ChooseOp op ops => ChooseOp op (op' : ops) where
 data Expr op v a
   = EVar (v a)
   | EOp (op (Expr op v) a)
+  deriving (Typeable)
+
+deriving instance (Data (v a), Data (op (Expr op v) a), Typeable op, Typeable v, Typeable a) => Data (Expr op v a)
+deriving instance (Show (v a), Show (op (Expr op v) a)) => Show (Expr op v a)
+
+deriving instance (Functor v, Functor (op (Expr op v))) => Functor (Expr op v)
+deriving instance (Foldable v, Foldable (op (Expr op v))) => Foldable (Expr op v)
+deriving instance (Traversable v, Traversable (op (Expr op v))) => Traversable (Expr op v)
+
+instance (HigherEq op) => HigherEq (Expr op) where
+  liftHigherEq le eq (EVar x) (EVar y) = le eq x y
+  liftHigherEq le eq (EOp x) (EOp y) = liftHigherEq (liftHigherEq le) eq x y
+  liftHigherEq _ _ _ _ = False
+
+instance (HigherEq op, Eq1 v) => Eq1 (Expr op v) where liftEq = liftEqFromHigher
+instance (HigherEq op, Eq1 v, Eq a) => Eq (Expr op v a) where (==) = eq1
+
 
 -- | Variables in an expression can be substituted.
 instance (Operator op) => Substitutive (Expr op) where
@@ -144,12 +284,14 @@ instance (Operator op) => Substitutive (Expr op) where
     EVar x -> f x
     EOp op -> EOp $ hmapOp (bindVars f) op
 
+
 -- | It turns out an expression can be treated as an operator. "Variables"
 -- become operator argument positions.
 instance (Operator op) => Operator (Expr op) where
   htraverseOp f = \case
     EVar x -> EVar <$> f x
     EOp op -> EOp <$> htraverseOp (htraverseOp f) op
+
 
 -- | Expressions can be evaluated whenever the contained operators can be
 -- evaluated.
@@ -158,12 +300,43 @@ instance (EvalOp f t op) => EvalOp f t (Expr op) where
     EVar x -> f x
     EOp op -> evalOp (evalOp f) op
 
+
+traverseOperators :: (Monad f, Operator op) => (forall b t. op t b -> f (op' t b)) -> Expr op v a -> f (Expr op' v a)
+traverseOperators f = \case
+  EVar x -> pure (EVar x)
+  EOp op -> do
+    op' <- htraverseOp (traverseOperators f) op
+    EOp <$> f op'
+
+
+mapOperators :: (Operator op) => (forall b t. op t b -> op' t b) -> Expr op v a -> Expr op' v a
+mapOperators f = runIdentity . traverseOperators (Identity . f)
+
+--------------------------------------------------------------------------------
+--  Expressions over a choice of operators
+--------------------------------------------------------------------------------
+
 -- | An expression @'Expr'' ops v a@ has operations from the type-level list
 -- @ops@, variables in the type @v@ and it represents a value of type @a@.
 --
 -- Intuitively, it represents an expression which may contain operations from
 -- any of the operators in the list @ops@.
 newtype Expr' ops v a = Expr' { getExpr' :: Expr (OpChoice ops) v a }
+  deriving (Typeable)
+
+deriving instance (Data (v a), Data (OpChoice ops (Expr (OpChoice ops) v) a), Typeable ops, Typeable v, Typeable a)
+  => Data (Expr' ops v a)
+
+deriving instance (Functor v, Functor (OpChoice ops (Expr (OpChoice ops) v))) => Functor (Expr' ops v)
+deriving instance (Foldable v, Foldable (OpChoice ops (Expr (OpChoice ops) v))) => Foldable (Expr' ops v)
+deriving instance (Traversable v, Traversable (OpChoice ops (Expr (OpChoice ops) v))) => Traversable (Expr' ops v)
+
+instance (HigherEq (OpChoice ops)) => HigherEq (Expr' ops) where
+  liftHigherEq le eq (Expr' x) (Expr' y) = liftHigherEq le eq x y
+
+instance (Eq1 v, HigherEq (OpChoice ops)) => Eq1 (Expr' ops v) where liftEq = liftEqFromHigher
+instance (Eq1 v, HigherEq (OpChoice ops), Eq a) => Eq (Expr' ops v a) where (==) = eq1
+
 
 -- TODO: Figure out type roles so these instances can be derived by
 -- GeneralizedNewtypeDeriving
@@ -178,3 +351,81 @@ instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
 
 instance (EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
   evalOp f = evalOp f . getExpr'
+
+--------------------------------------------------------------------------------
+--  Simple expressions
+--------------------------------------------------------------------------------
+
+data SimpleExpr op a
+  = SVar a
+  | SOp (op (SimpleExpr op a))
+  deriving (Typeable, Functor, Foldable, Traversable)
+
+deriving instance (Typeable op, Typeable a, Data a, Data (op (SimpleExpr op a))) => Data (SimpleExpr op a)
+
+deriving instance (Show a, Show (op (SimpleExpr op a))) => Show (SimpleExpr op a)
+
+instance HigherEq SimpleExpr where
+  liftHigherEq _ eq (SVar x) (SVar y) = eq x y
+  liftHigherEq le eq (SOp x) (SOp y) = le (liftHigherEq le eq) x y
+  liftHigherEq _ _ _ _ = False
+
+instance (Eq1 op) => Eq1 (SimpleExpr op) where liftEq = liftEqFromHigher
+
+instance (Eq1 op, Eq a) => Eq (SimpleExpr op a) where (==) = eq1
+
+
+instance Functor op => Applicative (SimpleExpr op) where
+  pure = return
+  (<*>) = ap
+
+instance Functor op => Monad (SimpleExpr op) where
+  return = SVar
+
+  e >>= f = case e of
+    SVar x -> f x
+    SOp x -> SOp ((>>= f) <$> x)
+
+
+_SimpleExpr
+  :: Functor op
+  => Iso (Expr (LiftOp op) v a) (Expr (LiftOp op) v b)
+         (SimpleExpr op (v a)) (SimpleExpr op (v b))
+_SimpleExpr = iso toSimpleExpr fromSimpleExpr
+  where
+    toSimpleExpr = \case
+      EVar x -> SVar x
+      EOp (LiftOp (Compose x)) -> SOp (toSimpleExpr <$> x)
+
+    fromSimpleExpr = \case
+      SVar x -> EVar x
+      SOp x -> EOp (liftOp (fromSimpleExpr <$> x))
+
+
+_SimpleExpr'
+  :: Functor op
+  => Iso (Expr (RestrictOp ((:~:) a) (LiftOp op)) v a) (Expr (RestrictOp ((:~:) b) (LiftOp op)) v b)
+         (SimpleExpr op (v a)) (SimpleExpr op (v b))
+_SimpleExpr' = iso toSimpleExpr fromSimpleExpr
+  where
+    toSimpleExpr = \case
+      EVar x -> SVar x
+      EOp (RestrictOp _ (LiftOp (Compose x))) -> SOp (toSimpleExpr <$> x)
+
+    fromSimpleExpr = \case
+      SVar x -> EVar x
+      SOp x -> EOp (RestrictOp Refl $ liftOp (fromSimpleExpr <$> x))
+
+--------------------------------------------------------------------------------
+--  TH Lenses
+--------------------------------------------------------------------------------
+
+makePrisms ''Expr
+makeWrapped ''Expr'
+makePrisms ''SimpleExpr
+
+_EOp' :: Prism' (Expr' ops v a) (OpChoice ops (Expr (OpChoice ops) v) a)
+_EOp' = _Wrapped . _EOp
+
+_EVar' :: Prism' (Expr' ops v a) (v a)
+_EVar' = _Wrapped . _EVar

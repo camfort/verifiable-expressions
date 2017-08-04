@@ -8,6 +8,7 @@
 {-# LANGUAGE NoMonomorphismRestriction  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
@@ -15,18 +16,22 @@
 
 module Language.Verification.Core where
 
-import           Data.Data
+import           Data.Typeable               (Typeable, gcast)
 
-import           Control.Lens            hiding ((.>))
+import           Control.Lens                hiding ((.>))
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State
 
-import           Data.Map                (Map)
-import           Data.SBV                hiding (OrdSymbolic (..), ( # ))
+import           Data.Map                    (Map)
+import           Data.SBV                    hiding (OrdSymbolic (..), ( # ))
+import qualified Data.SBV.Control            as S
 
 import           Language.Expression
+import           Language.Expression.Dict    (BooleanDict, HasTypemap)
+import           Language.Expression.DSL     (PropOver)
 import           Language.Expression.SBV
+import           Language.Expression.Unknown
 
 --------------------------------------------------------------------------------
 --  Verifiable Types
@@ -46,6 +51,7 @@ data VerifierSymbol f
   | VSReal (f AlgReal)
   | VSFloat (f Float)
   | VSDouble (f Double)
+  | VSUnknown (f Unknown)
 
 makePrisms ''VerifierSymbol
 
@@ -65,6 +71,7 @@ instance Verifiable Bool where _Symbol = _VSBool
 instance Verifiable Float where _Symbol = _VSFloat
 instance Verifiable Double where _Symbol = _VSDouble
 instance Verifiable AlgReal where _Symbol = _VSReal
+instance Verifiable Unknown where _Symbol = _VSUnknown
 
 --------------------------------------------------------------------------------
 --  Variables
@@ -87,7 +94,7 @@ data VerifierError l (expr :: (* -> *) -> * -> *)
   = VEMismatchedSymbolType l
   | VEEval EvalError
   -- ^ The same variable was used for two different symbol types
-  deriving (Show, Eq, Ord, Data, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
 newtype Verifier l expr a =
   Verifier
@@ -139,6 +146,50 @@ query (Query action) =
   do cfg <- ask
      r <- liftIO (runSMTWith cfg (runExceptT (evalStateT action qs0)))
      either throwError return r
+
+--------------------------------------------------------------------------------
+--  Query actions
+--------------------------------------------------------------------------------
+
+-- | Check a proposition, given an environment containing the instances needed
+-- to evaluate it symbolically.
+checkPropWith
+  :: (Substitutive expr, Location l,
+      EvalOp (EvalT ctx (Query l expr)) SBV expr,
+      HasTypemap BooleanDict ctx)
+  => ctx
+  -> PropOver (expr (Var l)) Bool
+  -> Query l expr Bool
+checkPropWith ctx prop = do
+  symbolicProp <- propToSBV ctx prop
+  liftSymbolic . S.query $ do
+    constrain (bnot symbolicProp)
+    cs <- S.checkSat
+    case cs of
+      S.Unsat -> return True
+      _ -> return False
+
+-- | Check a proposition by evaluating it symbolically (with the default
+-- standard environment) and sending it to the SMT solver.
+checkProp
+  :: (Substitutive expr, Location l, EvalOp (EvalT EvalContext (Query l expr)) SBV expr)
+  => PropOver (expr (Var l)) Bool
+  -> Query l expr Bool
+checkProp = checkPropWith defaultEvalContext
+
+--------------------------------------------------------------------------------
+--  Combinators
+--------------------------------------------------------------------------------
+
+propToSBV
+  :: (Substitutive expr, Location l, EvalOp (EvalT ctx (Query l expr)) SBV expr,
+      HasTypemap BooleanDict ctx)
+  => ctx
+  -> PropOver (expr (Var l)) Bool
+  -> Query l expr SBool
+propToSBV context prop = do
+  res <- runEvalT (evalOp (evalOp (lift . symbolVar)) prop) context
+  either (throwError . VEEval) return res
 
 --------------------------------------------------------------------------------
 --  Combinators

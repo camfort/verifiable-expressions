@@ -23,8 +23,6 @@ import           Data.Functor.Const
 import           Data.List                                  (intercalate)
 
 import           Language.Verification
-import           Language.Expression
-import           Language.Expression.Operators
 import           Language.Expression.Classes           (prettyValuePrec)
 
 --------------------------------------------------------------------------------
@@ -73,8 +71,16 @@ instance Pretty2 BoolOp where
     OpNot x -> paren p 8 $ "¬ " ++ pretty1Prec 8 x
     OpAnd x y -> paren p 3 $ pretty1Prec 3 x ++ " ∧ " ++ pretty1Prec 3 y
     OpOr  x y -> paren p 2 $ pretty1Prec 2 x ++ " ∨ " ++ pretty1Prec 2 y
-    OpImpl  x y -> paren p 1 $ pretty1Prec 1 x ++ " -> " ++ pretty1Prec 1 y
-    OpEquiv  x y -> paren p 0 $ pretty1Prec 0 x ++ " <-> " ++ pretty1Prec 0 y
+
+instance Pretty2 LogicOp where
+  pretty2Prec p = \case
+    LogLit True -> paren p 0 $ "T"
+    LogLit False -> paren p 0 $ "F"
+    LogNot x -> paren p 8 $ "¬ " ++ pretty1Prec 8 x
+    LogAnd x y -> paren p 3 $ pretty1Prec 3 x ++ " ∧ " ++ pretty1Prec 3 y
+    LogOr  x y -> paren p 2 $ pretty1Prec 2 x ++ " ∨ " ++ pretty1Prec 2 y
+    LogImpl  x y -> paren p 1 $ pretty1Prec 1 x ++ " -> " ++ pretty1Prec 1 y
+    LogEquiv  x y -> paren p 0 $ pretty1Prec 0 x ++ " <-> " ++ pretty1Prec 0 y
 
 instance Pretty2 NumOp where
   pretty2Prec p = \case

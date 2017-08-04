@@ -38,14 +38,15 @@ expressions.
 -}
 module Language.Expression.Dict where
 
-import           Data.Constraint (Constraint)
 import           Data.Typeable
 
-import           Control.Lens    hiding ((.>))
-import           Data.Map        (Map)
-import qualified Data.Map        as Map
+import qualified Data.Map                        as Map
 
-import           Data.SBV hiding ((#))
+import           Control.Lens                    hiding ((.>))
+
+import           Data.SBV                        hiding (( # ))
+
+import           Language.Expression.Constraints
 
 -- * Dictionaries for standard type classes
 
@@ -64,26 +65,32 @@ data BooleanDict a =
 -- boolean.
 data EqDict b a =
   EqDict
-  { _dictEq       :: a -> a -> b
-  , _dictNeq      :: a -> a -> b
+  { _dictEq  :: a -> a -> b
+  , _dictNeq :: a -> a -> b
   }
 
 -- | A reified 2-dictionary for the 'Ord' class that generalizes the type of
 -- boolean.
 data OrdDict b a =
   OrdDict
-  { _dictLt       :: a -> a -> b
-  , _dictLe       :: a -> a -> b
-  , _dictGt       :: a -> a -> b
-  , _dictGe       :: a -> a -> b
+  { _dictLt :: a -> a -> b
+  , _dictLe :: a -> a -> b
+  , _dictGt :: a -> a -> b
+  , _dictGe :: a -> a -> b
   }
 
 -- | A reified dictionary for the 'Num' class.
 data NumDict a =
   NumDict
-  { _dictAdd      :: a -> a -> a
-  , _dictMul      :: a -> a -> a
-  , _dictSub      :: a -> a -> a
+  { _dictAdd :: a -> a -> a
+  , _dictMul :: a -> a -> a
+  , _typemapub :: a -> a -> a
+  }
+
+-- | A dictionary entry for types that can be coerced into each other.
+data CoerceDict a b =
+  CoerceDict
+  { _dictCoerce :: a -> b
   }
 
 -- * Constructing dictionaries
@@ -124,7 +131,7 @@ numDict =
   NumDict
   { _dictAdd = (+)
   , _dictMul = (*)
-  , _dictSub = (-)
+  , _typemapub = (-)
   }
 
 -- | Create an 'EqDict' from an 'EqSymbolic' instance.
@@ -151,157 +158,44 @@ makeLenses ''BooleanDict
 makeLenses ''EqDict
 makeLenses ''OrdDict
 makeLenses ''NumDict
-
--- * Maps of dictionaries
-
--- | A map of dictionaries of the particular type @dict@. Associates types with
--- dictionaries for that type.
-type Dictmap dict = Map TypeRep (Exists dict)
-
--- | A map of 2-dictionaries of the particular type @dict@. Associates pairs of
--- types with 2-dictionaries for those types.
-type Dictmap2 dict = Map (TypeRep, TypeRep) (Exists2 dict)
+makeLenses ''CoerceDict
 
 
--- | Look up (or traverse over) a 'Dictmap' entry for a particular type.
-dictmapEntry :: Typeable a => proxy a -> Traversal' (Dictmap dict) (dict a)
-dictmapEntry proxyA = at (typeRep proxyA) . _Just . _Exists
+-- * Combinators
 
--- | Look up (or traverse over) a 'Dictmap2' entry for a particular pair of
--- types.
-dictmap2Entry :: (Typeable a, Typeable b) => proxy1 a -> proxy2 b -> Traversal' (Dictmap2 dict) (dict a b)
-dictmap2Entry proxyA proxyB = at (typeRep proxyA, typeRep proxyB) . _Just . _Exists2
+typemapFromClass :: (HaveInstances p xs) => proxy1 p -> (forall a. p a => k a) -> proxy2 xs -> Typemap k
+typemapFromClass (_ :: proxy1 p) f proxyXs =
+  let dm = dictmap proxyXs :: Dictmap p
+  in hmapTypemap (\Dict1 -> f) dm
 
 
--- | Given a function to construct a dictionary from a constraint @p@, and a
--- list of types @as@ which each satisfy @p a@, get a list of all the
--- dictionaries for those types.
-makeDictList
-  :: forall p as dict proxy1 proxy2.
-     HaveInstances p as
-  => proxy1 p
-  -> (forall a. p a => dict a)
-  -> proxy2 as
-  -> [Exists dict]
-makeDictList _ makeDict proxyAs = map makeExists (getInstances proxyAs)
-  where
-    makeExists :: SomeInstance p -> Exists dict
-    makeExists (SomeInstance (_ :: Proxy b)) = Exists (makeDict :: dict b)
+typemap2FromList :: [Exists2 p] -> Typemap2 p
+typemap2FromList xs =
+  let entries = [(trB, [(trA, x)]) | x <- xs, let (trA, trB) = ex2TypeReps x]
+      byB = Map.fromListWith (++) entries
+  in fmap Map.fromList byB
 
--- | Given a function to construct a dictionary from a constraint @p@, and a
--- list of types @as@ which each satisfy @p a@, get a 'Dictmap' of all the
--- dictionaries for those types.
-makeDictmap
-  :: forall p as dict proxy1 proxy2.
-     HaveInstances p as
-  => proxy1 p
-  -> (forall a. p a => dict a)
-  -> proxy2 as
-  -> Dictmap dict
-makeDictmap proxyP makeDict proxyAs = listToMap (makeDictList proxyP makeDict proxyAs)
-  where
-    listToMap = Map.fromList . map (\e -> (exTypeRep e, e))
-    exTypeRep (Exists (_ :: dict a)) = typeRep (Proxy :: Proxy a)
-
--- | Turn a 'Dictmap' into a 'Dictmap2'.
-makeDictmap2 :: forall a dict. (Typeable a) => Dictmap (dict a) -> Dictmap2 dict
-makeDictmap2 =
-  let arep = typeRep (Proxy :: Proxy a)
-  in Map.fromList
-   . map (\(brep, entry) -> ((arep, brep), toExists2 entry))
-   . Map.toList
 
 -- * Dictionary lookup type classes
 
--- | The class of environments which contain 'Dictmap's for the particular
+-- | The class of environments which contain 'Typemap's for the particular
 -- dictionary @dict@.
-class HasDicts dict s where
-  -- | Get the 'Dictmap' from the environment.
-  dicts :: Lens' s (Dictmap dict)
+class HasTypemap dict s where
+  -- | Get the 'Typemap' from the environment.
+  typemap :: Lens' s (Typemap dict)
 
   -- | Look up a dictionary for a particular type in the dictionary provided by
   -- the environment.
-  dictFor :: Typeable a => proxy a -> Traversal' s (dict a)
-  dictFor proxyA = dicts . dictmapEntry proxyA
+  instanceFor :: Typeable a => proxy a -> Traversal' s (dict a)
+  instanceFor proxyA = typemap . typemapEntry proxyA
 
--- | The class of environments which contain 'Dictmap2's for the particular
+-- | The class of environments which contain 'Typemap2's for the particular
 -- 2-dictionary @dict@.
-class HasDicts2 dict s where
-  -- | Get the 'Dictmap2' from the environment.
-  dicts2 :: Lens' s (Dictmap2 dict)
+class HasTypemap2 dict s where
+  -- | Get the 'Typemap2' from the environment.
+  typemap2 :: Lens' s (Typemap2 dict)
 
   -- | Look up a dictionary for a particular pair of types in the 2-dictionary
   -- provided by the environment.
-  dict2For :: (Typeable a, Typeable b) => proxy1 a -> proxy2 b -> Traversal' s (dict a b)
-  dict2For proxyA proxyB = dicts2 . dictmap2Entry proxyA proxyB
-
--- * Constraint machinery
-
--- | An existential dictionary, i.e. a dictionary for some hidden type.
-data Exists dict where
-  Exists :: Typeable a => dict a -> Exists dict
-
--- | An existential 2-dictionary, i.e. a 2-dictionary for a pair of hidden types.
-data Exists2 dict where
-  Exists2 :: (Typeable a, Typeable b) => dict a b -> Exists2 dict
-
--- | Project a dictionary for a particular type out of an existential. Fails
--- whenever the requested type doesn't match the type that's actually inside the
--- existential.
-_Exists :: forall a b dict. (Typeable a, Typeable b) => Prism (Exists dict) (Exists dict) (dict a) (dict b)
-_Exists = prism Exists extract
-  where
-    extract (Exists d) =
-      maybe (Left (Exists d)) Right $ gcast d
-
--- | Project a 2-dictionary for a particular type out of an existential. Fails
--- whenever the requested types don't match the types that are actually inside
--- the existential.
-_Exists2
-  :: forall a b c d dict.
-     (Typeable a, Typeable b, Typeable c, Typeable d)
-  => Prism (Exists2 dict) (Exists2 dict) (dict a b) (dict c d)
-_Exists2 = prism Exists2 extract
-  where
-    extract (Exists2 d) =
-      maybe (Left (Exists2 d)) Right $ gcast2' d
-
--- | Convert an existential dictionary (with a remaining rigid type argument)
--- into an existential 2-dictionary.
-toExists2 :: (Typeable a) => Exists (dict a) -> Exists2 dict
-toExists2 (Exists d) = Exists2 d
-
-
--- | Like 'gcast' from "Data.Typeable", but casts the two type arguments of a
--- binary type constructor.
-gcast2' :: forall a b c d p. (Typeable a, Typeable b, Typeable c, Typeable d) => p a b -> Maybe (p c d)
-gcast2' x
-  | Just Refl <- eqT :: Maybe (a :~: c)
-  , Just Refl <- eqT :: Maybe (b :~: d) = Just x
-  | otherwise = Nothing
-
--- | An existential which asserts that we have an instance of the class @p@ for
--- some type, but we are hiding which type the instance is for.
-data SomeInstance p where
-  SomeInstance :: (Typeable a, p a) => Proxy a -> SomeInstance p
-
--- | An instance @'HaveInstances' p as@ for a type class @p@ and a list of types
--- @as@ means that each type in @as@ satisfies @p@, and we can get a list of the
--- reified @p@ instances for all of those types.
---
--- Useful for reducing boilerplate in producing lists of @'SomeInstance' p@.
-class HaveInstances (p :: k -> Constraint) (as :: [k]) where
-  getInstances :: proxy as -> [SomeInstance p]
-
-instance HaveInstances p '[] where
-  getInstances _ = []
-
-instance (Typeable a, p a, HaveInstances p as) => HaveInstances p (a : as) where
-  getInstances _ =
-    let x :: SomeInstance p
-        x = SomeInstance (Proxy :: Proxy a)
-
-        xs :: [SomeInstance p]
-        xs = getInstances (Proxy :: Proxy as)
-
-    in x : xs
+  instance2For :: (Typeable a, Typeable b) => proxy1 a -> proxy2 b -> Traversal' s (dict a b)
+  instance2For proxyA proxyB = typemap2 . typemap2Entry proxyA proxyB

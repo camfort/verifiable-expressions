@@ -27,10 +27,7 @@ module Language.Verification.Conditions
   , joinAnn
   ) where
 
-import           Language.Verification
-import           Language.Expression
-import           Language.Expression.DSL hiding (Prop)
-
+import           Language.Verification hiding (Prop)
 
 --------------------------------------------------------------------------------
 --  Exposed Types

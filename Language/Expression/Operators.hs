@@ -84,13 +84,13 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) BoolOp where
     OpAnd x y -> liftA2' f symAnd x y
     OpOr x y -> liftA2' f symOr x y
 
-instance HigherEq BoolOp where
-  liftHigherEq le _ (OpNot x) (OpNot y) = le svEq x y
-  liftHigherEq le _ (OpAnd x1 x2) (OpAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (OpOr x1 x2) (OpOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq _ _ _ _ = False
+instance HEq BoolOp where
+  liftHEq le _ (OpNot x) (OpNot y) = le svEq x y
+  liftHEq le _ (OpAnd x1 x2) (OpAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (OpOr x1 x2) (OpOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq _ _ _ _ = False
 
-instance (Eq1 t) => Eq1 (BoolOp t) where liftEq = liftEqFromHigher
+instance (Eq1 t) => Eq1 (BoolOp t) where liftEq = liftLiftEq
 
 instance (Eq a, Eq1 t) => Eq (BoolOp t a) where (==) = eq1
 
@@ -122,16 +122,16 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) LogicOp where
     LogImpl x y -> liftA2' f symImpl x y
     LogEquiv x y -> liftA2' f symEquiv x y
 
-instance HigherEq LogicOp where
-  liftHigherEq _ _ (LogLit x) (LogLit y) = x == y
-  liftHigherEq le _ (LogNot x) (LogNot y) = le svEq x y
-  liftHigherEq le _ (LogAnd x1 x2) (LogAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (LogOr x1 x2) (LogOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (LogImpl x1 x2) (LogImpl y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (LogEquiv x1 x2) (LogEquiv y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq _ _ _ _ = False
+instance HEq LogicOp where
+  liftHEq _ _ (LogLit x) (LogLit y) = x == y
+  liftHEq le _ (LogNot x) (LogNot y) = le svEq x y
+  liftHEq le _ (LogAnd x1 x2) (LogAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (LogOr x1 x2) (LogOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (LogImpl x1 x2) (LogImpl y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (LogEquiv x1 x2) (LogEquiv y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq _ _ _ _ = False
 
-instance (Eq1 t) => Eq1 (LogicOp t) where liftEq = liftEqFromHigher
+instance (Eq1 t) => Eq1 (LogicOp t) where liftEq = liftLiftEq
 
 instance (Eq a, Eq1 t) => Eq (LogicOp t a) where (==) = eq1
 
@@ -184,10 +184,10 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) EqOp where
   evalOp f = \case
     OpEq x y -> liftA2' f symEq x y
 
-instance HigherEq EqOp where
-  liftHigherEq le _ (OpEq x1 x2) (OpEq y1 y2) = le svEq x1 y1 && le svEq x2 y2
+instance HEq EqOp where
+  liftHEq le _ (OpEq x1 x2) (OpEq y1 y2) = le svEq x1 y1 && le svEq x2 y2
 
-instance (Eq1 t) => Eq1 (EqOp t) where liftEq = liftEqFromHigher
+instance (Eq1 t) => Eq1 (EqOp t) where liftEq = liftLiftEq
 
 instance (Eq a, Eq1 t) => Eq (EqOp t a) where (==) = eq1
 
@@ -213,14 +213,14 @@ instance (Applicative f, Applicative g) => EvalOp f (PureEval g) OrdOp where
     OpGT x y -> liftA2' f symGt x y
     OpGE x y -> liftA2' f symGe x y
 
-instance HigherEq OrdOp where
-  liftHigherEq le _ (OpLT x1 x2) (OpLT y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (OpGT x1 x2) (OpGT y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (OpLE x1 x2) (OpLE y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq le _ (OpGE x1 x2) (OpGE y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHigherEq _ _ _ _ = False
+instance HEq OrdOp where
+  liftHEq le _ (OpLT x1 x2) (OpLT y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (OpGT x1 x2) (OpGT y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (OpLE x1 x2) (OpLE y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq le _ (OpGE x1 x2) (OpGE y1 y2) = le svEq x1 y1 && le svEq x2 y2
+  liftHEq _ _ _ _ = False
 
-instance (Eq1 t) => Eq1 (OrdOp t) where liftEq = liftEqFromHigher
+instance (Eq1 t) => Eq1 (OrdOp t) where liftEq = liftLiftEq
 
 instance (Eq a, Eq1 t) => Eq (OrdOp t a) where (==) = eq1
 

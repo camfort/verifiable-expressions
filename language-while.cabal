@@ -17,14 +17,15 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.Expression
-                     , Language.Expression.Classes
                      , Language.Expression.Constraints
                      , Language.Expression.Dict
                      , Language.Expression.Dict.Instances
                      , Language.Expression.DSL
-                     , Language.Expression.Operators
                      , Language.Expression.Pretty
-                     , Language.Expression.SBV
+                     , Language.Expression.Ops.SBV
+                     , Language.Expression.Ops.Standard
+                     , Language.Expression.Ops.Classes
+                     , Language.Expression.Ops.General
 
                      , Language.Verification
                      , Language.Verification.Conditions
@@ -33,8 +34,6 @@ library
 
                      , Language.While.Hoare
                      , Language.While.Hoare.Prover
-                     , Language.While.Pretty
-                     , Language.While.Prop
                      , Language.While.Syntax
                      , Language.While.Syntax.Sugar
                      , Language.While.Test
@@ -48,6 +47,7 @@ library
                      , sbv >= 7.0 && < 8
                      , constraints
                      , union >= 0.1.1 && < 0.2
+                     , vinyl >= 0.6
   -- hs-source-dirs:      
   default-language:    Haskell2010
   ghc-options:         -Wall

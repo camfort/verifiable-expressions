@@ -49,8 +49,8 @@ module Language.Expression.DSL
 import           Control.Lens                  hiding ((...), (.>))
 
 import           Language.Expression
-import           Language.Expression.Classes   as Classes
-import           Language.Expression.Operators as Operators
+import           Language.Expression.Ops.Classes   as Classes
+import           Language.Expression.Ops.Standard as Operators
 
 -- | Propositions over general expressions.
 type PropOver = Expr LogicOp

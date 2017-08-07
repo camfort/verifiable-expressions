@@ -105,12 +105,15 @@ class (Operator expr) => Substitutive expr where
 
 -- | Some operators can be evaluated in particular contexts.
 --
--- Notice we need `f (g a)` rather than collapsing `'Compose' f g` into a single
--- type variable. This gets around the situation where `g` is a type constructor
--- that doesn't make sense to be applied to just anything (e.g. 'Data.SBV.SBV'),
--- while `f` is a general context, e.g. an applicative or monad.
-class (Operator op) => EvalOp f g op where
-  evalOp :: (forall b. t b -> f (g b)) -> op t a -> f (g a)
+-- An instance @'EvalOp' f k op@ means that, in the context @f@, @op@ can be
+-- evaluated to create objects in the interpretation @k@.
+--
+-- @f@ is a context, e.g. applicative or monadic.
+--
+-- @k@ is something like 'Data.SBV.SBV', i.e. a constructor of concrete data
+-- types, rather than a monadic or applicative context.
+class (Operator op) => EvalOp f k op where
+  evalOp :: (forall b. t b -> f (k b)) -> op t a -> f (k a)
 
 -- | A convenience function for when an operator can be evaluated with no
 -- context.
@@ -141,29 +144,29 @@ instance (Eq1 f) => HEq (Compose f) where
 -- For example, @'OpChoice' '[NumOp, EqOp]@ is an operator that can either
 -- represent an arithmetic operation or an equality comparison.
 data OpChoice ops (t :: * -> *) a where
-  Op0 :: op t a -> OpChoice (op : ops) t a
-  OpS :: OpChoice ops t a -> OpChoice (op : ops) t a
+  OpThis :: op t a -> OpChoice (op : ops) t a
+  OpThat :: OpChoice ops t a -> OpChoice (op : ops) t a
   deriving (Typeable)
 
-_Op0 :: Prism' (OpChoice (op : ops) t a) (op t a)
-_Op0 = prism' Op0 $ \case
-  Op0 x -> Just x
-  OpS _ -> Nothing
+_OpThis :: Prism' (OpChoice (op : ops) t a) (op t a)
+_OpThis = prism' OpThis $ \case
+  OpThis x -> Just x
+  OpThat _ -> Nothing
 
-_OpS :: Prism' (OpChoice (op : ops) t a) (OpChoice ops t a)
-_OpS = prism' OpS $ \case
-  Op0 _ -> Nothing
-  OpS x -> Just x
+_OpThat :: Prism' (OpChoice (op : ops) t a) (OpChoice ops t a)
+_OpThat = prism' OpThat $ \case
+  OpThis _ -> Nothing
+  OpThat x -> Just x
 
 choiceToUnion :: OpChoice ops t a -> Union (AsOp t a) ops
 choiceToUnion = \case
-  Op0 x -> This (AsOp x)
-  OpS x -> That (choiceToUnion x)
+  OpThis x -> This (AsOp x)
+  OpThat x -> That (choiceToUnion x)
 
 unionToChoice :: Union (AsOp t a) ops -> OpChoice ops t a
 unionToChoice = \case
-  This (AsOp x) -> Op0 x
-  That x -> OpS (unionToChoice x)
+  This (AsOp x) -> OpThis x
+  That x -> OpThat (unionToChoice x)
 
 noOps :: OpChoice '[] t a -> x
 noOps = \case
@@ -181,21 +184,21 @@ instance (Operator op, Operator (OpChoice ops)) =>
   Operator (OpChoice (op : ops)) where
 
   htraverseOp f = \case
-    Op0 x -> Op0 <$> htraverseOp f x
-    OpS x -> OpS <$> htraverseOp f x
+    OpThis x -> OpThis <$> htraverseOp f x
+    OpThat x -> OpThat <$> htraverseOp f x
 
 instance (EvalOp f t op, EvalOp f t (OpChoice ops)) =>
   EvalOp f t (OpChoice (op : ops)) where
 
   evalOp f = \case
-    Op0 x -> evalOp f x
-    OpS x -> evalOp f x
+    OpThis x -> evalOp f x
+    OpThat x -> evalOp f x
 
 instance (HEq op, HEq (OpChoice ops)) =>
   HEq (OpChoice (op : ops)) where
 
-  liftHEq le eq (Op0 x) (Op0 y) = liftHEq le eq x y
-  liftHEq le eq (OpS x) (OpS y) = liftHEq le eq x y
+  liftHEq le eq (OpThis x) (OpThis y) = liftHEq le eq x y
+  liftHEq le eq (OpThat x) (OpThat y) = liftHEq le eq x y
   liftHEq _ _ _ _ = False
 
 

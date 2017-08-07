@@ -2,6 +2,9 @@
 
 module Language.While.Syntax.Sugar where
 
+import           Language.Expression
+import           Language.Expression.Curry
+import           Language.Expression.Ops.General
 import           Language.While.Hoare
 import           Language.While.Syntax
 
@@ -24,21 +27,26 @@ infixr 6 .||
 (^^^) :: WhileProp l Bool -> AnnCommand l () -> AnnCommand l ()
 prop ^^^ command = CAnn (PropAnn prop ()) command
 
-(.<) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-(.<) = BLess
+(.==) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.==) = EOp ... rcurry (Op OpEq)
 
-(.<=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-(.<=) = BLessEq
+(.<) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.<) = EOp ... rcurry (Op OpLT)
 
 (.>) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-(.>) = flip BLess
+(.>) = EOp ... rcurry (Op OpGT)
+
+(.<=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.<=) = EOp ... rcurry (Op OpLE)
 
 (.>=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-(.>=) = flip BLessEq
+(.>=) = EOp ... rcurry (Op OpGE)
 
 (.&&) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-(.&&) = BAnd
+(.&&) = EOp ... rcurry (Op OpAnd)
 
 (.||) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-(.||) = BOr
+(.||) = EOp ... rcurry (Op OpOr)
 
+wenot :: WhileExpr l Bool -> WhileExpr l Bool
+wenot = EOp . rcurry (Op OpNot)

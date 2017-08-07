@@ -13,7 +13,7 @@
 A collection of standard operator types which may be used to form expressions.
 
 -}
-module Language.Expression.Operators
+module Language.Expression.Ops.Standard
   (
   -- * Standard operators
     LogicOp(..)
@@ -35,6 +35,9 @@ module Language.Expression.Operators
 
   -- * Classes used to constrain operator types
   , module Classes
+
+  -- * Combinators
+  , liftA2'
   ) where
 
 import           Control.Applicative         (liftA2)
@@ -45,7 +48,7 @@ import           Data.Typeable               ((:~:) (..), Typeable, eqT)
 import           Data.SBV                    (SBV)
 
 import           Language.Expression         as Expression
-import           Language.Expression.Classes as Classes
+import           Language.Expression.Ops.Classes as Classes
 
 --------------------------------------------------------------------------------
 --  Operators

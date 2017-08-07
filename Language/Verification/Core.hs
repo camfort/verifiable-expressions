@@ -30,8 +30,8 @@ import qualified Data.SBV.Control            as S
 import           Language.Expression
 import           Language.Expression.Dict    (BooleanDict, HasTypemap)
 import           Language.Expression.DSL     (PropOver)
-import           Language.Expression.SBV
-import           Language.Expression.Classes
+import           Language.Expression.Ops.SBV
+import           Language.Expression.Ops.Classes
 
 --------------------------------------------------------------------------------
 --  Verifiable Types

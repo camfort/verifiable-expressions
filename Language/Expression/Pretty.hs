@@ -1,12 +1,12 @@
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE EmptyCase #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE NoMonomorphismRestriction        #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE EmptyCase                 #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 
 {-|
 
@@ -26,11 +26,12 @@ module Language.Expression.Pretty
 -- import Prelude hiding (showParen)
 
 import           Data.Functor.Const
-import           Data.List                                  (intercalate)
+import           Data.List                     (intersperse)
+import           Data.Monoid                   (Endo (..))
 
+import           Language.Expression.Ops.Classes   (prettyValuePrec)
+import           Language.Expression.Ops.Standard
 import           Language.Verification
-import           Language.Expression.Operators
-import           Language.Expression.Classes           (prettyValuePrec)
 
 --------------------------------------------------------------------------------
 --  Convenience
@@ -168,18 +169,16 @@ instance (Pretty2 (OpChoice '[])) where
 
 instance (Pretty2 op, Pretty2 (OpChoice ops)) => Pretty2 (OpChoice (op : ops)) where
   prettys2Prec p = \case
-    Op0 x -> prettys2Prec p x
-    OpS x -> prettys2Prec p x
+    OpThis x -> prettys2Prec p x
+    OpThat x -> prettys2Prec p x
 
 instance {-# OVERLAPPING #-} Pretty String where
   pretty = id
 
 instance {-# OVERLAPPING #-} Pretty a => Pretty [a] where
-  pretty xs =
-    "[ " ++
-    -- (intercalate "\n, " . map (\x -> prettysPrec 11 x "")) xs ++
-    (intercalate "\n, " . map pretty) xs ++
-    "\n]"
+  prettysPrec _ xs = (appEndo . mconcat . map Endo) (
+    showString "[ " : (intersperse (showString "\n, ") . map prettys) xs) .
+    showString "\n]"
 
 instance {-# OVERLAPPING #-} Pretty a => Pretty (Maybe a) where
   prettysPrec p (Just x) = prettysPrec p x

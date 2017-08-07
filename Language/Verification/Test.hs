@@ -11,6 +11,7 @@ import qualified Data.Map                      as Map
 
 import           Language.Expression.Pretty
 import           Language.Verification hiding (Expr)
+import           Language.Expression.DSL
 
 --------------------------------------------------------------------------------
 --  Test expression and propositions

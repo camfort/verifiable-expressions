@@ -14,7 +14,7 @@ This module provides the ability to evaluate expressions to 'SBV' values which
 can be sent off to an SMT solver to have properties proved about them.
 
 -}
-module Language.Expression.SBV
+module Language.Expression.Ops.SBV
   (
   -- * The evaluation monad
     EvalError(..)
@@ -47,7 +47,7 @@ import           Language.Expression
 import           Language.Expression.Constraints
 import           Language.Expression.Dict
 import           Language.Expression.Dict.Instances
-import           Language.Expression.Operators
+import           Language.Expression.Ops.Standard
 
 --------------------------------------------------------------------------------
 --  Contexts
@@ -227,7 +227,7 @@ unaryOpFromDict
 unaryOpFromDict err l x =
   do mOp <- preview (instanceFor Proxy . l)
      case mOp of
-       Just o -> o <$> x
+       Just o  -> o <$> x
        Nothing -> err (typeRep (Proxy :: Proxy a))
 
 -- | In a monad where we have access to 2-dictionaries of a particular type
@@ -276,7 +276,7 @@ binaryOpFromDict
 binaryOpFromDict err l x y =
   do mOp <- preview (instanceFor Proxy . l)
      case mOp of
-       Just o -> o <$> x <*> y
+       Just o  -> o <$> x <*> y
        Nothing -> err (typeRep (Proxy :: Proxy a))
 
 

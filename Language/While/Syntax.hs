@@ -1,117 +1,139 @@
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveTraversable     #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveFunctor      #-}
-{-# LANGUAGE TypeSynonymInstances      #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE DeriveTraversable  #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE PatternSynonyms    #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
 
 
 module Language.While.Syntax where
 
-import           Data.String         (IsString (..))
+import           Data.String                      (IsString (..))
 
-import           Control.Applicative (liftA2)
-import Data.SBV
+import           Data.SBV
+import           Data.Vinyl                       (Rec (RNil))
 
--- These imports are used for evaluating commands
--- import           Data.Map            (Map)
--- import qualified Data.Map            as Map
--- import           Control.Monad.State
+import           Control.Lens                     hiding ((...), (.>))
+import           Control.Monad.State
+import           Data.Map                         (Map)
+import qualified Data.Map                         as Map
 
-import Language.Expression
-import Language.Expression.Pretty
+import           Language.Expression
+import           Language.Expression.Curry
+import           Language.Expression.Ops.General
+import           Language.Expression.Ops.Standard (PureEval (..))
+import           Language.Expression.Pretty
 
-data WhileOp t a where
-  OpAdd, OpSub, OpMul :: t Integer -> t Integer -> WhileOp t Integer
-  OpEq, OpLT, OpLE, OpGT, OpGE :: t Integer -> t Integer -> WhileOp t Bool
-  OpNot :: t Bool -> WhileOp t Bool
-  OpAnd, OpOr :: t Bool -> t Bool -> WhileOp t Bool
-  OpLitInteger :: Integer -> WhileOp t Integer
-  OpLitBool :: Bool -> WhileOp t Bool
+--------------------------------------------------------------------------------
+--  Operator kind
+--------------------------------------------------------------------------------
 
-instance Operator WhileOp where
-  htraverseOp f = \case
-    OpAdd x y -> OpAdd <$> f x <*> f y
-    OpSub x y -> OpSub <$> f x <*> f y
-    OpMul x y -> OpMul <$> f x <*> f y
-    OpEq x y -> OpEq <$> f x <*> f y
-    OpLT x y -> OpLT <$> f x <*> f y
-    OpLE x y -> OpLE <$> f x <*> f y
-    OpGT x y -> OpGT <$> f x <*> f y
-    OpGE x y -> OpGE <$> f x <*> f y
-    OpNot x -> OpNot <$> f x
-    OpAnd x y -> OpAnd <$> f x <*> f y
-    OpOr x y -> OpOr <$> f x <*> f y
-    OpLitInteger x -> pure (OpLitInteger x)
-    OpLitBool x -> pure (OpLitBool x)
+data WhileOpKind as r where
+  OpLit             :: Integer -> WhileOpKind '[]                 Integer
+  OpAdd, OpSub, OpMul          :: WhileOpKind '[Integer, Integer] Integer
+  OpEq, OpLT, OpLE, OpGT, OpGE :: WhileOpKind '[Integer, Integer] Bool
+  OpAnd, OpOr                  :: WhileOpKind '[Bool   , Bool]    Bool
+  OpNot                        :: WhileOpKind '[Bool]             Bool
 
-instance HEq WhileOp where
-  liftHEq le _ (OpAdd x1 y1) (OpAdd x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpSub x1 y1) (OpSub x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpMul x1 y1) (OpMul x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpEq x1 y1) (OpEq x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpLT x1 y1) (OpLT x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpLE x1 y1) (OpLE x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpGT x1 y1) (OpGT x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpGE x1 y1) (OpGE x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpAnd x1 y1) (OpAnd x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpOr x1 y1) (OpOr x2 y2) = le (==) x1 x2 && le (==) y1 y2
-  liftHEq le _ (OpNot x) (OpNot y) = le (==) x y
-  liftHEq _ _ (OpLitInteger x) (OpLitInteger y) = x == y
-  liftHEq _ _ (OpLitBool x) (OpLitBool y) = x == y
-  liftHEq _ _ _ _ = False
 
-instance Pretty2 WhileOp where
-  prettys2Prec p = \case
-    OpAdd x y ->
-      showParen (p > 5) $ prettys1Prec 6 x . showString " + " . prettys1Prec 6 y
-    OpSub x y ->
-      showParen (p > 5) $ prettys1Prec 6 x . showString " - " . prettys1Prec 6 y
-    OpMul x y ->
-      showParen (p > 6) $ prettys1Prec 7 x . showString " * " . prettys1Prec 7 y
+instance (Applicative f, Applicative g) =>
+  EvalOpMany f (PureEval g) WhileOpKind where
 
-    OpEq x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " = " . prettys1Prec 5 y
+  evalMany = \case
+    OpLit x -> \_ -> pure (pure x)
 
-    OpLT x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " < " . prettys1Prec 5 y
-    OpLE x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " <= " . prettys1Prec 5 y
-    OpGT x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " > " . prettys1Prec 5 y
-    OpGE x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " >= " . prettys1Prec 5 y
+    OpAdd -> pure . runcurryA (+)
+    OpSub -> pure . runcurryA (-)
+    OpMul -> pure . runcurryA (*)
 
-    OpNot x -> showParen (p > 8) $ showString "! " . prettys1Prec 9 x
-    OpAnd x y ->
-      showParen (p > 3) $ prettys1Prec 4 x . showString " && " . prettys1Prec 4 y
-    OpOr x y ->
-      showParen (p > 2) $ prettys1Prec 3 x . showString " || " . prettys1Prec 3 y
+    OpEq -> pure . runcurryA (==)
+    OpLT -> pure . runcurryA (<)
+    OpLE -> pure . runcurryA (<=)
+    OpGT -> pure . runcurryA (>)
+    OpGE -> pure . runcurryA (>=)
 
-    OpLitInteger x -> shows x
-    OpLitBool x -> shows x
+    OpAnd -> pure . runcurryA (&&)
+    OpOr -> pure . runcurryA (||)
 
-instance (Applicative f) => EvalOp f SBV WhileOp where
-  evalOp f = \case
-    OpAdd x y -> liftA2 (+) (f x) (f y)
-    OpSub x y -> liftA2 (-) (f x) (f y)
-    OpMul x y -> liftA2 (*) (f x) (f y)
+    OpNot -> pure . runcurryA not
 
-    OpEq x y -> liftA2 (.==) (f x) (f y)
-    OpLT x y -> liftA2 (.<) (f x) (f y)
-    OpLE x y -> liftA2 (.<=) (f x) (f y)
-    OpGT x y -> liftA2 (.>) (f x) (f y)
-    OpGE x y -> liftA2 (.>=) (f x) (f y)
+instance (Applicative f) => EvalOpMany f SBV WhileOpKind where
+  evalMany = \case
+    OpLit x -> \_ -> pure (fromIntegral x)
 
-    OpAnd x y -> liftA2 (&&&) (f x) (f y)
-    OpOr x y -> liftA2 (|||) (f x) (f y)
-    OpNot x -> bnot <$> f x
+    OpAdd -> pure . runcurry (+)
+    OpSub -> pure . runcurry (-)
+    OpMul -> pure . runcurry (*)
 
-    OpLitInteger x -> pure (fromInteger x)
-    OpLitBool x -> pure (fromBool x)
+    OpEq -> pure . runcurry (.==)
+    OpLT -> pure . runcurry (.<)
+    OpLE -> pure . runcurry (.<=)
+    OpGT -> pure . runcurry (.>)
+    OpGE -> pure . runcurry (.>=)
+
+    OpAnd -> pure . runcurry (&&&)
+    OpOr -> pure . runcurry (|||)
+
+    OpNot -> pure . runcurry bnot
+
+instance EqOpMany WhileOpKind where
+  liftEqMany (OpLit x) (OpLit y) _ = \_ _ -> x == y
+  liftEqMany OpAdd OpAdd k = k
+  liftEqMany OpSub OpSub k = k
+  liftEqMany OpMul OpMul k = k
+  liftEqMany OpEq  OpEq  k = k
+  liftEqMany OpLT  OpLT  k = k
+  liftEqMany OpLE  OpLE  k = k
+  liftEqMany OpGT  OpGT  k = k
+  liftEqMany OpGE  OpGE  k = k
+  liftEqMany OpAnd OpAnd k = k
+  liftEqMany OpOr  OpOr  k = k
+  liftEqMany OpNot OpNot k = k
+  liftEqMany _ _ _ = \_ _ -> False
+
+prettys1Binop ::
+  (Pretty1 t) =>
+  Int -> String -> (Int -> t a -> t b -> ShowS)
+prettys1Binop prec opStr = \p x y ->
+  showParen (p > prec) $ prettys1Prec (prec + 1) x
+                       . showString opStr
+                       . prettys1Prec (prec + 1) y
+
+instance PrettyOpMany WhileOpKind where
+  prettysPrecMany = flip $ \case
+    OpAdd -> runcurry . prettys1Binop 5 " + "
+    OpSub -> runcurry . prettys1Binop 5 " - "
+    OpMul -> runcurry . prettys1Binop 6 " * "
+
+    OpEq -> runcurry . prettys1Binop 4 " = "
+
+    OpLT -> runcurry . prettys1Binop 4 " < "
+    OpLE -> runcurry . prettys1Binop 4 " <= "
+    OpGT -> runcurry . prettys1Binop 4 " > "
+    OpGE -> runcurry . prettys1Binop 4 " >= "
+
+    OpNot ->
+      \p ->
+        runcurry $ \x -> showParen (p > 8) $ showString "! " . prettys1Prec 9 x
+    OpAnd -> runcurry . prettys1Binop 3 " && "
+    OpOr -> runcurry . prettys1Binop 2 " || "
+
+    OpLit x -> \_ _ -> shows x
+
+--------------------------------------------------------------------------------
+--  Operators
+--------------------------------------------------------------------------------
+
+type WhileOp = GeneralOp WhileOpKind
+
+--------------------------------------------------------------------------------
+--  Variables
+--------------------------------------------------------------------------------
 
 data WhileVar l a where
   WhileVar :: l -> WhileVar l Integer
@@ -119,42 +141,27 @@ data WhileVar l a where
 instance Pretty l => Pretty1 (WhileVar l) where
   pretty1 (WhileVar l) = pretty l
 
+--------------------------------------------------------------------------------
+--  Expressions
+--------------------------------------------------------------------------------
+
 type WhileExpr l = Expr WhileOp (WhileVar l)
 
-(...) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-(f ... g) x y = f (g x y)
-
 instance Num (WhileExpr l Integer) where
-  fromInteger = EOp . OpLitInteger . fromInteger
+  fromInteger x = EOp (Op (OpLit x) RNil)
 
-  (+) = EOp ... OpAdd
-  (*) = EOp ... OpMul
-  (-) = EOp ... OpSub
+  (+) = EOp ... rcurry (Op OpAdd)
+  (*) = EOp ... rcurry (Op OpMul)
+  (-) = EOp ... rcurry (Op OpSub)
   abs = error "can't take abs of expressions"
   signum = error "can't take signum of expressions"
 
 instance IsString s => IsString (WhileExpr s Integer) where
   fromString = EVar . WhileVar . fromString
 
-pattern BLess :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-pattern BLess a b = EOp (OpLT a b)
-
-pattern BLessEq :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-pattern BLessEq a b = EOp (OpLE a b)
-
-pattern BEq :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
-pattern BEq a b = EOp (OpEq a b)
-
-
-pattern BAnd :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-pattern BAnd a b = EOp (OpAnd a b)
-
-pattern BOr :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-pattern BOr a b = EOp (OpOr a b)
-
-pattern BNot :: WhileExpr l Bool -> WhileExpr l Bool
-pattern BNot a = EOp (OpNot a)
-
+--------------------------------------------------------------------------------
+--  Commands
+--------------------------------------------------------------------------------
 
 data Command l a
   = CAnn a (Command l a)
@@ -166,63 +173,103 @@ data Command l a
 
 instance (Pretty l, Pretty a) => Pretty (Command l a) where
   prettysPrec p = \case
-    CAnn ann c -> showParen (p > 10) $ showString "{ " . prettys ann . showString " }\n" . prettys c
-    CSeq c1 c2 -> showParen (p > 10) $ prettys c1 . showString ";\n" . prettys c2
+    CAnn ann c ->
+      showParen (p > 10) $ showString "{ "
+                         . prettys ann
+                         . showString " }\n"
+                         . prettys c
+    CSeq c1 c2 ->
+      showParen (p > 10) $ prettys c1 . showString ";\n" . prettys c2
     CSkip -> showString "()"
-    CAssign v e -> showParen (p > 10) $ prettys v . showString " := " . prettys e
-    CIf cond c1 c2 -> showParen (p > 10) $ showString "if " . prettysPrec 11 cond . showString " then\n" . prettysPrec 11 c1 . showString "\nelse\n" . prettysPrec 11 c2
-    CWhile cond body -> showParen (p > 10) $ showString "while " . prettysPrec 11 cond . showString " do\n" . prettysPrec 11 body
+    CAssign v e ->
+      showParen (p > 10) $ prettys v . showString " := " . prettys e
+    CIf cond c1 c2 ->
+      showParen (p > 10) $ showString "if "
+                         . prettysPrec 11 cond
+                         . showString " then\n"
+                         . prettysPrec 11 c1
+                         . showString "\nelse\n"
+                         . prettysPrec 11 c2
+    CWhile cond body ->
+      showParen (p > 10) $ showString "while "
+                         . prettysPrec 11 cond
+                         . showString " do\n"
+                         . prettysPrec 11 body
 
--- data StepResult a
---   = Terminated
---   | Failed
---   | Progress a
---   deriving (Functor)
+--------------------------------------------------------------------------------
+--  Running Commands
+--------------------------------------------------------------------------------
+
+data StepResult a
+  = Terminated
+  | Failed
+  | Progress a
+  deriving (Functor)
+
+evalWhileExpr
+  :: (Monad m)
+  => (forall x. WhileVar l x -> m x)
+  -> WhileExpr l a -> m a
+evalWhileExpr f
+  = fmap (runIdentity . getPureEval)
+  . evalOp (fmap (PureEval . Identity) . f)
+
+oneStep
+  :: (Ord l)
+  => Command l a
+  -> State (Map l Integer) (StepResult (Command l a))
+oneStep = \case
+  CAnn ann c -> fmap (CAnn ann) <$> oneStep c
+
+  CSeq c1 c2 ->
+    do s <- oneStep c1
+       case s of
+         Terminated -> return (Progress c2)
+         Failed -> return Failed
+         Progress c1' -> return (Progress (c1' `CSeq` c2))
+
+  CSkip -> return Terminated
+
+  CAssign loc expr ->
+    do env <- get
+       if Map.member loc env then
+         case evalWhileExpr (lookupVar env) expr of
+           Just val ->
+             do at loc .= Just val
+                return Terminated
+           Nothing -> return Failed
+         -- Can't assign a memory location that doesn't exist
+         else return Failed
+
+  CIf cond c1 c2 ->
+    do env <- get
+       case evalWhileExpr (lookupVar env) cond of
+         Just True -> return (Progress c1)
+         Just False -> return (Progress c2)
+         _ -> return Failed
+
+  CWhile cond body ->
+    do env <- get
+       case evalWhileExpr (lookupVar env) cond of
+         Just True -> return (Progress (body `CSeq` (CWhile cond body)))
+         Just False -> return Terminated
+         _ -> return Failed
 
 
--- oneStep :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) (StepResult (Command l a))
--- oneStep = \case
---   CAnn ann c -> fmap (CAnn ann) <$> oneStep c
+runCommand :: (Ord l) => Command l a -> State (Map l Integer) Bool
+runCommand command =
+  do s <- oneStep command
+     case s of
+       Terminated -> return True
+       Failed -> return False
+       Progress command' -> runCommand command'
 
---   CSeq c1 c2 ->
---     do s <- oneStep c1
---        case s of
---          Terminated -> return (Progress c2)
---          Failed -> return Failed
---          Progress c1' -> return (Progress (CSeq c1' c2))
+--------------------------------------------------------------------------------
+--  Combinators
+--------------------------------------------------------------------------------
 
---   CSkip -> return Terminated
+(...) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+(f ... g) x y = f (g x y)
 
---   CAssign loc expr ->
---     do env <- get
---        if Map.member loc env then
---          case evalExpr (`Map.lookup` env) expr of
---            Just val ->
---              do at loc .= Just val
---                 return Terminated
---            Nothing -> return Failed
---          -- Can't assign a memory location that doesn't exist
---          else return Failed
-
---   CIf cond c1 c2 ->
---     do env <- get
---        case evalBexpr (`Map.lookup` env) cond of
---          Just True -> return (Progress c1)
---          Just False -> return (Progress c2)
---          _ -> return Failed
-
---   CWhile cond body ->
---     do env <- get
---        case evalBexpr (`Map.lookup` env) cond of
---          Just True -> return (Progress (CSeq body (CWhile cond body)))
---          Just False -> return Terminated
---          _ -> return Failed
-
-
--- runCommand :: (Ord l, Num n, Ord n) => Command l a -> State (Map l n) Bool
--- runCommand command =
---   do s <- oneStep command
---      case s of
---        Terminated -> return True
---        Failed -> return False
---        Progress command' -> runCommand command'
+lookupVar :: (Ord l) => Map l Integer -> WhileVar l a -> Maybe a
+lookupVar env (WhileVar s) = Map.lookup s env

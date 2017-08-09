@@ -36,6 +36,7 @@ module Language.Expression.Ops.SBV
 
 import           Data.Typeable                      (Proxy (..), TypeRep,
                                                      Typeable, typeRep)
+import           Control.Exception
 
 import           Control.Lens
 import           Control.Monad.Except
@@ -61,6 +62,7 @@ data EvalContext =
   , _eqTypemap      :: Typemap2 EqDict
   , _ordTypemap     :: Typemap2 OrdDict
   , _booleanTypemap :: Typemap BooleanDict
+  , _coerceTypemap :: Typemap2 CoerceDict
   }
 
 makeLenses ''EvalContext
@@ -74,6 +76,7 @@ defaultEvalContext =
   , _eqTypemap = standardEqInstances
   , _ordTypemap = standardOrdInstances
   , _booleanTypemap = standardBooleanInstances
+  , _coerceTypemap = standardCoerceInstances
   }
 
 instance HasTypemap NumDict EvalContext where
@@ -88,6 +91,9 @@ instance HasTypemap2 OrdDict EvalContext where
 instance HasTypemap BooleanDict EvalContext where
   typemap = booleanTypemap
 
+instance HasTypemap2 CoerceDict EvalContext where
+  typemap2 = coerceTypemap
+
 --------------------------------------------------------------------------------
 --  Evaluation monad
 --------------------------------------------------------------------------------
@@ -98,6 +104,11 @@ data EvalError
   = MissingInstance String [TypeRep]
   -- ^ The dictionary was missing an instance for these types.
   deriving (Show, Eq, Ord, Typeable)
+
+instance Exception EvalError where
+  displayException = \case
+    MissingInstance msg [ty] -> "missing an instance of " ++ msg ++ " at type " ++ show ty
+    MissingInstance msg types -> "missing an instance of " ++ msg ++ " at types " ++ show types
 
 -- | The dictionary was missing an instance for this type.
 missingInstance :: (MonadError EvalError m) => String -> TypeRep -> m a

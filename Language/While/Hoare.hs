@@ -7,13 +7,8 @@
 {-# LANGUAGE TypeFamilies       #-}
 
 module Language.While.Hoare where
-  -- ( WhileProp
-  -- , evalWhileProp
-  -- , substWhileProp
-  -- , PropAnn(..)
-  -- , AnnCommand
-  -- , generateVcs
-  -- ) where
+
+import Control.Monad.Writer
 
 import           Language.While.Syntax
 
@@ -39,6 +34,8 @@ translateExpr = hmapOp (\(WhileVar s) -> Var s)
 translateProp :: WhileProp l a -> VProp l a
 translateProp = hmapOp translateExpr
 
+type MonadGen l = WriterT [VProp l Bool] Maybe
+
 --------------------------------------------------------------------------------
 --  Exposed Functions
 --------------------------------------------------------------------------------
@@ -46,33 +43,35 @@ translateProp = hmapOp translateExpr
 -- | Generate verification conditions to prove that the given Hoare partial
 -- correctness triple holds.
 generateVCs :: (Location l) => WhileProp l Bool -> WhileProp l Bool -> AnnCommand l a -> Maybe [VProp l Bool]
-generateVCs precond postcond = generateVCs' (translateProp precond) (translateProp postcond)
+generateVCs precond postcond cmd =
+  execWriterT $ generateVCs' (translateProp precond, translateProp postcond, cmd)
 
 
-generateVCs' :: (Location l) => GenVCs Maybe (Expr WhileOp) (Var l) (AnnCommand l a)
-generateVCs' precond postcond = \case
+generateVCs' :: (Location l) => Triplet (Expr WhileOp) (Var l) (AnnCommand l a) -> MonadGen l ()
+generateVCs' (precond, postcond, cmd) = case cmd of
   CAnn (PropAnn prop _) command ->
-    generateVCs' (translateProp prop *&& precond) postcond command
+    generateVCs' ((translateProp prop *&& precond), postcond, command)
 
-  c@(CSeq _ _) ->
-    splitSeq c >>= sequenceVCs generateVCs' precond postcond
+  c@(CSeq _ _) -> do
+    s <- lift (splitSeq c)
+    void $ sequenceVCs generateVCs' (precond, postcond, s)
 
-  CSkip -> skipVCs precond postcond ()
+  CSkip -> skipVCs (precond, postcond, ())
 
   CAssign loc e ->
-    assignVCs precond postcond (Assignment (Var loc) (translateExpr e))
+    assignVCs (precond, postcond, (Assignment (Var loc) (translateExpr e)))
 
   CIf cond c1 c2 ->
-    ifVCs generateVCs' (expr . translateExpr) precond postcond (cond, c1, c2)
+    void $ ifVCs generateVCs' (expr . translateExpr) (precond, postcond, (cond, c1, c2))
 
   CWhile cond (CAnn (PropAnn invariant _) body) ->
     whileVCs generateVCs'
       (expr . translateExpr)
       (translateProp invariant)
-      precond postcond (cond, body)
+      (precond, postcond, (cond, body))
 
   -- If this falls through, the command is not sufficiently annotated
-  _ -> Nothing
+  _ -> mzero
 
 --------------------------------------------------------------------------------
 --  Internal
@@ -89,10 +88,10 @@ splitSeq = \case
        return $ Annotation a1 (translateProp midcond) a2
   CSeq c1 (CAssign loc e) ->
     do a1 <- splitSeq c1
-       a1 `joinAnn` JustAssign [Assignment (Var loc) (translateExpr e)]
+       a1 `joinAnnSeq` JustAssign [Assignment (Var loc) (translateExpr e)]
   CSeq c1 c2 ->
     do a1 <- splitSeq c1
        a2 <- splitSeq c2
-       a1 `joinAnn` a2
+       a1 `joinAnnSeq` a2
   CAssign loc e -> return $ JustAssign [Assignment (Var loc) (translateExpr e)]
   c -> return $ CmdAssign c []

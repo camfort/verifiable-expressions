@@ -59,7 +59,7 @@ module Language.Expression
   , _SimpleExpr'
   ) where
 
-import           Data.Data             (Typeable, Data, (:~:)(..))
+import           Data.Data             -- (Typeable, Data, (:~:)(..))
 import           Control.Monad (ap)
 
 import           Data.Functor.Identity

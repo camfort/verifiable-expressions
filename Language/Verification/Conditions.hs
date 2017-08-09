@@ -1,5 +1,10 @@
-{-# LANGUAGE GADTs          #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 {- |
 
@@ -12,23 +17,31 @@ module Language.Verification.Conditions
     Prop
   , Assignment(..)
   , AnnSeq(..)
-  , GenVCs
+  , Triplet
 
   -- * Generating Verification Conditions
   , skipVCs
   , assignVCs
   , sequenceVCs
   , ifVCs
+  , multiIfVCs
   , whileVCs
 
   -- * Combinators
   , subAssignment
   , chainSub
-  , joinAnn
+  , joinAnnSeq
+  , JoinAnnSeq(..)
+  , joiningAnnSeq
+  , emptyAnnSeq
+  , propAnnSeq
+  , cmdAnnSeq
   ) where
 
-import           Language.Verification
+import           Control.Monad.Writer    (MonadWriter (tell))
+
 import           Language.Expression.DSL hiding (Prop)
+import           Language.Verification
 
 --------------------------------------------------------------------------------
 --  Exposed Types
@@ -68,91 +81,153 @@ subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr
 chainSub
   :: (Substitutive expr, Location l)
   => Prop expr (Var l) -> [Assignment expr (Var l)] -> Prop expr (Var l)
-chainSub prop [] = prop
+chainSub prop []       = prop
 chainSub prop (a : as) = subAssignment a (chainSub prop as)
 
 -- | Joins two annotations together without a Hoare annotation in between. Fails
 -- if this would place two non-assignment commands after each other, because
 -- these need an annotation.
-joinAnn :: AnnSeq expr var cmd -> AnnSeq expr var cmd -> Maybe (AnnSeq expr var cmd)
-joinAnn (JustAssign xs) (JustAssign ys) = return $ JustAssign (xs ++ ys)
-joinAnn (JustAssign []) s@(CmdAssign _ _) = return s
-joinAnn (Annotation l p r) r' = Annotation l p <$> joinAnn r r'
-joinAnn l' (Annotation l p r) = joinAnn l' l >>= \l'' -> return $ Annotation l'' p r
-joinAnn _ _ = Nothing
+joinAnnSeq :: AnnSeq expr var cmd -> AnnSeq expr var cmd -> Maybe (AnnSeq expr var cmd)
+joinAnnSeq (JustAssign xs) (JustAssign ys) = return $ JustAssign (xs ++ ys)
+joinAnnSeq (CmdAssign cmd xs) (JustAssign ys) = return $ CmdAssign cmd (xs ++ ys)
+joinAnnSeq (JustAssign []) s@(CmdAssign _ _) = return s
+joinAnnSeq (Annotation l p r) r' = Annotation l p <$> joinAnnSeq r r'
+joinAnnSeq l' (Annotation l p r) = joinAnnSeq l' l >>= \l'' -> return $ Annotation l'' p r
+joinAnnSeq _ _ = Nothing
+
+emptyAnnSeq :: AnnSeq expr var cmd
+emptyAnnSeq = JustAssign []
+
+propAnnSeq :: PropOver (expr var) Bool -> AnnSeq expr var cmd
+propAnnSeq p = Annotation emptyAnnSeq p emptyAnnSeq
+
+cmdAnnSeq :: cmd -> AnnSeq expr var cmd
+cmdAnnSeq c = CmdAssign c []
+
+-- | 'JoinAnnSeq' forms a 'Monoid' out of 'AnnSeq' by propagating failure to
+-- join arising from 'joinAnnSeq'.
+newtype JoinAnnSeq expr var cmd = JoinAnnSeq { tryJoinAnnSeq :: Maybe (AnnSeq expr var cmd) }
+
+joiningAnnSeq :: AnnSeq expr var cmd -> JoinAnnSeq expr var cmd
+joiningAnnSeq = JoinAnnSeq . Just
+
+instance Monoid (JoinAnnSeq expr var cmd) where
+  mempty = JoinAnnSeq (Just emptyAnnSeq)
+  mappend (JoinAnnSeq (Just x)) (JoinAnnSeq (Just y)) = JoinAnnSeq (x `joinAnnSeq` y)
+  mappend _ _ = JoinAnnSeq Nothing
 
 --------------------------------------------------------------------------------
 --  Generating verification conditions
 --------------------------------------------------------------------------------
 
--- | A function that generates verification conditions from something of type
--- 'a', given a precondition and a postcondition.
-type GenVCs f expr var a = Prop expr var -> Prop expr var -> a -> f [Prop expr var]
+class MonadWriter [Prop expr var] m => MonadGenVCs expr var m | m -> expr var
+instance MonadWriter [Prop expr var] m => MonadGenVCs expr var m
 
+type Triplet expr var a = (Prop expr var, Prop expr var, a)
 
 -- | Generates verification conditions for a skip statement.
 skipVCs
-  :: (Substitutive expr, Applicative f)
-  => GenVCs f expr (Var l) ()
-skipVCs precond postcond () = pure [precond *-> postcond]
+  :: (Substitutive expr, MonadGenVCs expr var m)
+  => Triplet expr var () -> m ()
+skipVCs (precond, postcond, ()) = tell [precond *-> postcond]
 
 
 -- | Generates verification conditions for an assignment.
 assignVCs
-  :: (Substitutive expr, Applicative f, Location l)
-  => GenVCs f expr (Var l) (Assignment expr (Var l))
-assignVCs precond postcond assignment =
+  :: (Substitutive expr, MonadGenVCs expr (Var l) m, Location l)
+  => Triplet expr (Var l) (Assignment expr (Var l)) -> m ()
+assignVCs (precond, postcond, assignment) = do
   let postcond' = subAssignment assignment postcond
-  in pure [precond *-> postcond']
+  tell [precond *-> postcond']
 
 
 -- | Generates verification conditions for a sequence of commands.
 sequenceVCs
-  :: (Substitutive expr, Applicative f, Location l)
-  => GenVCs f expr (Var l) cmd
-  -> GenVCs f expr (Var l) (AnnSeq expr (Var l) cmd)
-sequenceVCs cmdVCs precond postcond annSeq =
+  :: (Substitutive expr, MonadGenVCs expr (Var l) m, Location l)
+  => (Triplet expr (Var l) cmd -> m a)
+  -> Triplet expr (Var l) (AnnSeq expr (Var l) cmd) -> m [a]
+sequenceVCs cmdVCs (precond, postcond, annSeq) =
   case annSeq of
     -- A sequence of assignments can be verified by checking the precondition
     -- implies the postcondition, after substitutions are performed by the
     -- assignments.
-    JustAssign as ->
-      pure [precond *-> chainSub postcond as]
+    JustAssign as -> do
+      tell [precond *-> chainSub postcond as]
+      return []
 
     -- A command followed by a sequence of assignments can be verified by
     -- substituting based on the assignments in the postcondition, then verifying
     -- the command with the new postcondition and original precondition.
     CmdAssign cmd as ->
       let postcond' = chainSub postcond as
-      in cmdVCs precond postcond' cmd
+      in (: []) <$> cmdVCs (precond, postcond', cmd)
 
     -- To verify @{P} C_1 ; {R} C_2 {Q}@, verify @{P} C_1 {R}@ and @{R} C_2 {Q}@.
-    Annotation l midcond r ->
-      (++) <$> sequenceVCs cmdVCs precond midcond l
-           <*> sequenceVCs cmdVCs midcond postcond r
+    Annotation l midcond r -> do
+      (++) <$> sequenceVCs cmdVCs (precond, midcond, l)
+           <*> sequenceVCs cmdVCs (midcond, postcond, r)
 
 
 -- | Generates verification conditions for a two-branch if command.
 ifVCs
-  :: (Substitutive expr, Applicative f)
-  => GenVCs f expr (Var l) cmd
+  :: (Substitutive expr, MonadGenVCs expr (Var l) m)
+  => (Triplet expr (Var l) cmd -> m a)
   -> (cond -> Prop expr (Var l))
-  -> GenVCs f expr (Var l) (cond, cmd, cmd)
-ifVCs cmdVCs condToProp precond postcond (cond, cmd1, cmd2) =
+  -> Triplet expr (Var l) (cond, cmd, cmd) -> m (a, a)
+ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
   let condProp = condToProp cond
-  in (++) <$> cmdVCs (precond *&& condProp) postcond cmd1
-          <*> cmdVCs (precond *&& pnot condProp) postcond cmd2
+  return (,) <*> cmdVCs ((precond *&& condProp), postcond, cmd1)
+             <*> cmdVCs ((precond *&& pnot condProp), postcond, cmd2)
+
+
+-- | Generates verification conditions for a multi-branch if-then-else-...
+-- command.
+multiIfVCs
+  :: (Substitutive expr, Monad m)
+  => (Triplet expr (Var l) cmd -> m ())
+  -> (cond -> Prop expr (Var l))
+  -> Triplet expr (Var l) [(Maybe cond, cmd)] -> m ()
+multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
+  where
+    go precond' ((branchCond, branchCmd) : rest) =
+      case branchCond of
+        Just bc -> do
+          let bc' = condToProp bc
+          cmdVCs ((precond' *&& bc'), postcond, branchCmd)
+          go (precond' *&& pnot bc') rest
+        Nothing -> do
+          cmdVCs (precond', postcond, branchCmd)
+    go _ [] = return ()
+
+  -- let branchVcs previousConds branchCond branchCmd = do
+  --       let notPreviousConds = pnot (propOr previousConds)
+  --       case branchCond of
+  --         Just bc -> do
+  --           cmdVCs ((precond *&& notPreviousConds *&& bc), postcond, branchCmd)
+  --           cmdVCs ((precond *&& notPreviousConds *&& pnot bc), postcond, branchCmd)
+  --         Nothing ->
+  --           cmdVCs ((precond *&& notPreviousConds), postcond, branchCmd)
+
+  --     step (branchCond, branchCmd) previousConds =
+  --       do let branchCond' = condToProp <$> branchCond
+  --              bcList = maybe [] (: []) branchCond'
+  --          branchVcs previousConds branchCond' branchCmd
+  --          return (bcList ++ previousConds)
+
+  -- in void . foldrM step [] $ branches
 
 
 -- | Generates verification conditions for a while loop.
 whileVCs
-  :: (Substitutive expr, Applicative f)
-  => GenVCs f expr (Var l) cmd
+  :: (Substitutive expr, MonadGenVCs expr (Var l) m)
+  => (Triplet expr (Var l) cmd -> m ())
   -> (cond -> Prop expr (Var l))
   -> Prop expr (Var l) -- ^ Loop invariant
-  -> GenVCs f expr (Var l) (cond, cmd)
-whileVCs cmdVCs condToProp invariant precond postcond (cond, body) =
+  -> Triplet expr (Var l) (cond, cmd) -> m ()
+whileVCs cmdVCs condToProp invariant (precond, postcond, (cond, body)) = do
   let condProp = condToProp cond
-      invariantMaintained = cmdVCs (invariant *&& condProp) invariant body
-      invariantWorks = [precond *-> invariant, (invariant *&& pnot condProp) *-> postcond]
-  in (invariantWorks ++) <$> invariantMaintained
+  -- Assert that the invariant is maintained over the loop body
+  cmdVCs ((invariant *&& condProp), invariant, body)
+  -- Assert that the invariant is implied by precondition, and at the end of the
+  -- loop the invariant implies the postcondition
+  tell [precond *-> invariant, (invariant *&& pnot condProp) *-> postcond]

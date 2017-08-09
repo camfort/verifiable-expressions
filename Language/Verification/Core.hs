@@ -17,6 +17,7 @@
 module Language.Verification.Core where
 
 import           Data.Typeable               (Typeable, gcast)
+import           Control.Exception
 
 import           Control.Lens                hiding ((.>))
 import           Control.Monad.Except
@@ -54,7 +55,7 @@ data VerifierSymbol f
 
 makePrisms ''VerifierSymbol
 
-class SymValue a => Verifiable a where
+class (SymValue a, SymWord a) => Verifiable a where
   _Symbol :: Prism' (VerifierSymbol f) (f a)
 
 instance Verifiable Integer where _Symbol = _VSInteger
@@ -82,7 +83,7 @@ instance Location String where locationName = id
 
 -- | A variable with locations in @l@ representing values of type @a@.
 data Var l a where
-  Var :: (SymWord a, Verifiable a) => l -> Var l a
+  Var :: (Verifiable a) => l -> Var l a
 
 varName :: Location l => Var l a -> String
 varName (Var x) = locationName x
@@ -96,6 +97,11 @@ data VerifierError l (expr :: (* -> *) -> * -> *)
   | VEEval EvalError
   -- ^ The same variable was used for two different symbol types
   deriving (Show, Eq, Ord, Typeable)
+
+instance (Show l, Location l, Typeable l, Typeable expr) => Exception (VerifierError l expr) where
+  displayException = \case
+    VEMismatchedSymbolType l -> "variable " ++ locationName l ++ " was used at two different types"
+    VEEval e -> "evaluation error: " ++ displayException e
 
 newtype Verifier l expr a =
   Verifier

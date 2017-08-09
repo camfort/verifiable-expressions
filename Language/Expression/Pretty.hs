@@ -184,8 +184,8 @@ instance {-# OVERLAPPING #-} Pretty a => Pretty (Maybe a) where
   prettysPrec p (Just x) = prettysPrec p x
   prettysPrec _ Nothing = \r -> "<nothing>" ++ r
 
-instance Pretty1 (Var String) where
-  pretty1 (Var x) = x
+instance Pretty l => Pretty1 (Var l) where
+  prettys1Prec p (Var l) = prettysPrec p l
 
 instance Pretty () where
   pretty = show

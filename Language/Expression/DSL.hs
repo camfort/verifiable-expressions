@@ -40,6 +40,8 @@ module Language.Expression.DSL
   , (*||)
   , (*->)
   , (*<->)
+  , propAnd
+  , propOr
   -- * Operators
   , module Operators
   -- * Classes
@@ -47,6 +49,7 @@ module Language.Expression.DSL
   ) where
 
 import           Control.Lens                  hiding ((...), (.>))
+import           Data.List (foldl')
 
 import           Language.Expression
 import           Language.Expression.Ops.Classes   as Classes
@@ -99,6 +102,14 @@ pnot = EOp . LogNot
 
 (*<->) :: SymBool b => PropOver expr b -> PropOver expr b -> PropOver expr b
 (*<->) = EOp ... LogEquiv
+
+propAnd :: SymBool b => [PropOver expr b] -> PropOver expr b
+propAnd [] = plit True
+propAnd (x : xs) = foldl' (*&&) x xs
+
+propOr :: SymBool b => [PropOver expr b] -> PropOver expr b
+propOr [] = plit False
+propOr (x : xs) = foldl' (*||) x xs
 
 --------------------------------------------------------------------------------
 --  Literal Operators

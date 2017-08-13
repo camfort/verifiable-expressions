@@ -308,11 +308,18 @@ standardCoerceInstances =
     ++ (integerToDouble ..* fromIntegrals)
     -- Converting from each integral type to 'Float'
     ++ (integerToFloat ..* fromIntegrals)
+    -- SBV values
+    ++ fromSBVs
     )
   where
     betweenIntegrals = do
       to <- toIntegrals
       to ..* fromIntegrals
+
+    fromSBVs :: [Exists2 CoerceDict]
+    fromSBVs =
+      [ Exists2 ((CoerceDict sFromIntegral) :: CoerceDict (SBV Integer) (SBV AlgReal))
+      ]
 
     fromIntegrals :: [Exists2 CoerceDict]
     fromIntegrals =

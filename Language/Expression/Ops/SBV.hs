@@ -209,7 +209,7 @@ instance (Monad m, HasTypemap2 OrdDict r) => EvalOp (EvalT r m) SBV OrdOp where
 -- 'SBV' values.
 instance (Monad m, HasTypemap2 CoerceDict r) => EvalOp (EvalT r m) SBV CoerceOp where
   evalOp f = \case
-    OpCoerce x -> unaryOpFromDict2 (missingInstance2 "Ord") dictCoerce (f x)
+    OpCoerce x -> unaryOpFromDict2 (missingInstance2 "Coerce") dictCoerce (f x)
 
 --------------------------------------------------------------------------------
 --  Combinators

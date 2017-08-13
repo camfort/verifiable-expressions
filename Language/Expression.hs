@@ -158,16 +158,6 @@ _OpThat = prism' OpThat $ \case
   OpThis _ -> Nothing
   OpThat x -> Just x
 
-choiceToUnion :: OpChoice ops t a -> Union (AsOp t a) ops
-choiceToUnion = \case
-  OpThis x -> This (AsOp x)
-  OpThat x -> That (choiceToUnion x)
-
-unionToChoice :: Union (AsOp t a) ops -> OpChoice ops t a
-unionToChoice = \case
-  This (AsOp x) -> OpThis x
-  That x -> OpThat (unionToChoice x)
-
 noOps :: OpChoice '[] t a -> x
 noOps = \case
 
@@ -212,10 +202,21 @@ newtype AsOp (t :: * -> *) a op = AsOp (op t a)
 
 makeWrapped ''AsOp
 
+choiceToUnion :: OpChoice ops t a -> Union (AsOp t a) ops
+choiceToUnion = \case
+  OpThis x -> This (AsOp x)
+  OpThat x -> That (choiceToUnion x)
+
+unionToChoice :: Union (AsOp t a) ops -> OpChoice ops t a
+unionToChoice = \case
+  This (AsOp x) -> OpThis x
+  That x -> OpThat (unionToChoice x)
+
 _OpChoice
   :: Iso (OpChoice ops t a) (OpChoice ops' t' a')
          (Union (AsOp t a) ops) (Union (AsOp t' a') ops')
 _OpChoice = iso choiceToUnion unionToChoice
+
 
 -- | This class provides a low-boilerplate way of lifting individual operators
 -- into a union, and extracting operators from a union.
@@ -443,6 +444,9 @@ instance Functor op => Monad (SimpleExpr op) where
     SVar x -> f x
     SOp x -> SOp ((>>= f) <$> x)
 
+--------------------------------------------------------------------------------
+--  Lenses
+--------------------------------------------------------------------------------
 
 _SimpleExpr
   :: Functor op
@@ -473,10 +477,6 @@ _SimpleExpr' = iso toSimpleExpr fromSimpleExpr
     fromSimpleExpr = \case
       SVar x -> EVar x
       SOp x -> EOp (RestrictOp Refl $ liftOp (fromSimpleExpr <$> x))
-
---------------------------------------------------------------------------------
---  TH Lenses
---------------------------------------------------------------------------------
 
 makePrisms ''Expr
 makeWrapped ''Expr'

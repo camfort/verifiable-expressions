@@ -23,7 +23,6 @@ library
                      , Language.Expression.Dict.Instances
                      , Language.Expression.DSL
                      , Language.Expression.Pretty
-                     , Language.Expression.Ops.SBV
                      , Language.Expression.Ops.Standard
                      , Language.Expression.Ops.Classes
                      , Language.Expression.Ops.General
@@ -31,7 +30,6 @@ library
                      , Language.Verification
                      , Language.Verification.Conditions
                      , Language.Verification.Core
-                     , Language.Verification.Test
 
                      , Language.While.Hoare
                      , Language.While.Hoare.Prover

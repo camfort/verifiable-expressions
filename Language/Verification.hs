@@ -21,7 +21,8 @@ module Language.Verification
 
   -- * Verifiable types and variables
   , VerifierSymbol
-  , Verifiable(..)
+  , Verifiable
+  , _Symbol
   , Location(..)
   , Var(..)
   , varName

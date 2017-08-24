@@ -1,3 +1,4 @@
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE EmptyCase                 #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -14,13 +15,18 @@ Pretty printing for expressions.
 
 -}
 module Language.Expression.Pretty
-  ( putPretty
-  , Pretty(..)
+  (
+  -- * Classes
+    Pretty(..)
   , prettys
   , Pretty1(..)
   , prettys1
   , Pretty2(..)
   , prettys2
+  -- * Combinators
+  , putPretty
+  , prettys1PrecBinop
+  , prettys1PrecUnop
   ) where
 
 -- import Prelude hiding (showParen)
@@ -29,7 +35,6 @@ import           Data.Functor.Const
 import           Data.List                     (intersperse)
 import           Data.Monoid                   (Endo (..))
 
-import           Language.Expression.Ops.Classes   (prettyValuePrec)
 import           Language.Expression.Ops.Standard
 import           Language.Verification
 
@@ -39,6 +44,18 @@ import           Language.Verification
 
 putPretty :: Pretty a => a -> IO ()
 putPretty = putStrLn . pretty
+
+--------------------------------------------------------------------------------
+--  Combinators
+--------------------------------------------------------------------------------
+
+prettys1PrecUnop :: Pretty1 t => Int -> String -> Int -> t a -> ShowS
+prettys1PrecUnop opPrec opStr p x =
+  showParen (p > opPrec) $ showString opStr . prettys1Prec (opPrec + 1) x
+
+prettys1PrecBinop :: (Pretty1 f, Pretty1 g) => Int -> String -> Int -> f a -> g b -> ShowS
+prettys1PrecBinop opPrec opStr p x y =
+  showParen (p > opPrec) $ prettys1Prec (opPrec + 1) x . showString opStr . prettys1Prec (opPrec + 1) y
 
 --------------------------------------------------------------------------------
 --  Pretty typeclasses
@@ -62,7 +79,7 @@ class Pretty a where
   pretty x = prettys x ""
   prettysPrec _ x s = pretty x ++ s
 
-class Pretty1 t where
+class Pretty1 (t :: k -> *) where
   {-# MINIMAL pretty1 | prettys1Prec #-}
 
   pretty1 :: t a -> String
@@ -71,7 +88,7 @@ class Pretty1 t where
   prettys1Prec :: Int -> t a -> ShowS
   prettys1Prec _ x s = pretty1 x ++ s
 
-class Pretty2 op where
+class Pretty2 (op :: (k -> *) -> k -> *) where
   {-# MINIMAL pretty2 | prettys2Prec #-}
 
   pretty2 :: (Pretty1 t) => op t a -> String
@@ -83,15 +100,6 @@ class Pretty2 op where
 --------------------------------------------------------------------------------
 --  Operator instances
 --------------------------------------------------------------------------------
-
-instance Pretty2 BoolOp where
-  prettys2Prec p = \case
-    OpNot x -> showParen (p > 8) $ showString "! " . prettys1Prec 9 x
-    OpAnd x y ->
-      showParen (p > 3) $ prettys1Prec 4 x . showString " && " . prettys1Prec 4 y
-
-    OpOr x y ->
-      showParen (p > 2) $ prettys1Prec 3 x . showString " || " . prettys1Prec 3 y
 
 instance Pretty2 LogicOp where
   prettys2Prec p = \case
@@ -106,39 +114,6 @@ instance Pretty2 LogicOp where
       showParen (p > 1) $ prettys1Prec 2 x . showString " -> " . prettys1Prec 2 y
     LogEquiv  x y ->
       showParen (p > 0) $ prettys1Prec 1 x . showString " <-> " . prettys1Prec 1 y
-
-instance Pretty2 NumOp where
-  prettys2Prec p = \case
-    OpAdd x y ->
-      showParen (p > 5) $ prettys1Prec 6 x . showString " + " . prettys1Prec 6 y
-    OpSub x y ->
-      showParen (p > 5) $ prettys1Prec 6 x . showString " - " . prettys1Prec 6 y
-    OpMul x y ->
-      showParen (p > 6) $ prettys1Prec 7 x . showString " * " . prettys1Prec 7 y
-
-instance Pretty2 LitOp where
-  prettys2Prec p = \case
-    OpLit x -> showString $ prettyValuePrec p x
-
-instance Pretty2 EqOp where
-  prettys2Prec p = \case
-    OpEq x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " = " . prettys1Prec 5 y
-
-instance Pretty2 OrdOp where
-  prettys2Prec p = \case
-    OpLT x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " < " . prettys1Prec 5 y
-    OpLE x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " <= " . prettys1Prec 5 y
-    OpGT x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " > " . prettys1Prec 5 y
-    OpGE x y ->
-      showParen (p > 4) $ prettys1Prec 5 x . showString " >= " . prettys1Prec 5 y
-
-instance Pretty2 CoerceOp where
-  prettys2Prec p = \case
-    OpCoerce x -> prettys1Prec p x
 
 --------------------------------------------------------------------------------
 --  Combinatory instances

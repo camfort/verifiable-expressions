@@ -16,12 +16,17 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Language.Expression
   (
   -- * Classes
     Operator(..)
   , Substitutive(..)
+  , joinExpression
+  , traverseVars
+  , mapVars
+
   , EvalOp(..)
   , evalOp'
   , HEq(..)
@@ -36,6 +41,7 @@ module Language.Expression
   , _EOp'
   , traverseOperators
   , mapOperators
+  , squashExpression
 
   -- * Operator union
   , OpChoice(..)
@@ -102,6 +108,25 @@ class (Operator expr) => Substitutive expr where
 
   bindVars' :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
   bindVars' f = runIdentity . bindVars (Identity . f)
+
+-- | Monadic join for expressions.
+joinExpression
+  :: (Substitutive expr)
+  => expr (expr v) a -> expr v a
+joinExpression = bindVars' id
+
+
+traverseVars
+  :: (Applicative f, Substitutive expr)
+  => (forall b. v b -> f (v' b)) -> expr v a -> f (expr v' a)
+traverseVars f = bindVars (fmap pureVar . f)
+
+
+mapVars
+  :: (Substitutive expr)
+  => (forall b. v b -> v' b) -> expr v a -> expr v' a
+mapVars f = runIdentity . traverseVars (Identity . f)
+
 
 -- | Some operators can be evaluated in particular contexts.
 --
@@ -407,6 +432,22 @@ instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
 
 instance (EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
   evalOp f = evalOp f . getExpr'
+
+
+-- | Squash a composition of expressions over different operators into a
+-- single-layered expression over a choice of the two operators.
+squashExpression
+  :: (Operator op1,
+      Operator op2,
+      Operator (OpChoice ops),
+      ChooseOp op1 ops,
+      ChooseOp op2 ops)
+  => Expr op1 (Expr op2 v) a -> Expr' ops v a
+squashExpression
+  = Expr'
+  . joinExpression
+  . hmapOp (mapOperators (review chooseOp))
+  . mapOperators (review chooseOp)
 
 --------------------------------------------------------------------------------
 --  Simple expressions

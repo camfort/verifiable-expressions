@@ -1,154 +1,128 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE NoMonomorphismRestriction  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
 module Language.Verification.Core where
 
-import           Data.Typeable               (Typeable, gcast)
 import           Control.Exception
+import           Data.Typeable                    ((:~:) (..), Typeable)
 
-import           Control.Lens                hiding ((.>))
+import           Control.Lens                     hiding ((.>))
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State
 
-import           Data.Map                    (Map)
-import           Data.SBV                    hiding (OrdSymbolic (..), ( # ))
-import qualified Data.SBV.Control            as S
+import           Data.Map                         (Map)
+import           Data.SBV                         hiding (OrdSymbolic (..),
+                                                   ( # ))
+import qualified Data.SBV.Control                 as S
 
 import           Language.Expression
-import           Language.Expression.Dict    (BooleanDict, HasTypemap)
-import           Language.Expression.DSL     (PropOver)
-import           Language.Expression.Ops.SBV
-import           Language.Expression.Ops.Classes
-
---------------------------------------------------------------------------------
---  Verifiable Types
---------------------------------------------------------------------------------
-
-data VerifierSymbol f
-  = VSInteger (f Integer)
-  | VSWord8 (f Word8)
-  | VSWord16 (f Word16)
-  | VSWord32 (f Word32)
-  | VSWord64 (f Word64)
-  | VSInt8 (f Int8)
-  | VSInt16 (f Int16)
-  | VSInt32 (f Int32)
-  | VSInt64 (f Int64)
-  | VSBool (f Bool)
-  | VSReal (f AlgReal)
-  | VSFloat (f Float)
-  | VSDouble (f Double)
-
-makePrisms ''VerifierSymbol
-
-class (SymValue a, SymWord a) => Verifiable a where
-  _Symbol :: Prism' (VerifierSymbol f) (f a)
-
-instance Verifiable Integer where _Symbol = _VSInteger
-instance Verifiable Word8 where _Symbol = _VSWord8
-instance Verifiable Word16 where _Symbol = _VSWord16
-instance Verifiable Word32 where _Symbol = _VSWord32
-instance Verifiable Word64 where _Symbol = _VSWord64
-instance Verifiable Int8 where _Symbol = _VSInt8
-instance Verifiable Int16 where _Symbol = _VSInt16
-instance Verifiable Int32 where _Symbol = _VSInt32
-instance Verifiable Int64 where _Symbol = _VSInt64
-instance Verifiable Bool where _Symbol = _VSBool
-instance Verifiable Float where _Symbol = _VSFloat
-instance Verifiable Double where _Symbol = _VSDouble
-instance Verifiable AlgReal where _Symbol = _VSReal
+import           Language.Expression.DSL          (PropOver)
+import           Language.Expression.Ops.Standard (LogicOp)
 
 --------------------------------------------------------------------------------
 --  Variables
 --------------------------------------------------------------------------------
 
-class (Ord l) => Location l where
-  locationName :: l -> String
+class (Ord (VarKey v)) => VerifiableVar v where
+  type VarKey v
+  type VarSym v :: * -> *
 
-instance Location String where locationName = id
+  symForVar :: v a -> Symbolic (VarSym v a)
+  varKey :: v a -> VarKey v
 
--- | A variable with locations in @l@ representing values of type @a@.
-data Var l a where
-  Var :: (Verifiable a) => l -> Var l a
+  eqVarTypes :: v a -> v b -> Maybe (a :~: b)
 
-varName :: Location l => Var l a -> String
-varName (Var x) = locationName x
+  castVarSym :: v a -> VarSym v b -> Maybe (VarSym v a)
 
 --------------------------------------------------------------------------------
 --  Verifier Monad
 --------------------------------------------------------------------------------
 
-data VerifierError l (expr :: (* -> *) -> * -> *)
-  = VEMismatchedSymbolType l
-  | VEEval EvalError
+data VerifierError v (expr :: (* -> *) -> * -> *)
+  = VEMismatchedSymbolType (VarKey v)
   -- ^ The same variable was used for two different symbol types
-  deriving (Show, Eq, Ord, Typeable)
 
-instance (Show l, Location l, Typeable l, Typeable expr) => Exception (VerifierError l expr) where
+deriving instance Show (VarKey v) => Show (VerifierError v expr)
+deriving instance Eq (VarKey v) => Eq (VerifierError v expr)
+deriving instance Ord (VarKey v) => Ord (VerifierError v expr)
+deriving instance Typeable (VarKey v) => Typeable (VerifierError v expr)
+
+instance (Typeable v, l ~ VarKey v, Show l, Typeable l, Typeable expr) =>
+  Exception (VerifierError v expr) where
+
   displayException = \case
-    VEMismatchedSymbolType l -> "variable " ++ locationName l ++ " was used at two different types"
-    VEEval e -> "evaluation error: " ++ displayException e
+    VEMismatchedSymbolType l ->
+      "variable " ++ show l ++ " was used at two different types"
 
-newtype Verifier l expr a =
+newtype Verifier v expr a =
   Verifier
   { getVerifier ::
       ReaderT SMTConfig (
-        ExceptT (VerifierError l expr)
+        ExceptT (VerifierError v expr)
           IO) a
   }
   deriving (Functor, Applicative, Monad, MonadIO,
-            MonadReader SMTConfig, MonadError (VerifierError l expr))
+            MonadReader SMTConfig, MonadError (VerifierError v expr))
 
 runVerifierWith
-  :: (Location l)
+  :: (VerifiableVar v)
   => SMTConfig
-  -> Verifier l expr a
-  -> IO (Either (VerifierError l expr) a)
+  -> Verifier v expr a
+  -> IO (Either (VerifierError v expr) a)
 runVerifierWith config (Verifier action) = runExceptT (runReaderT action config)
 
-runVerifier :: Location l => Verifier l expr a -> IO (Either (VerifierError l expr) a)
+runVerifier
+  :: VerifiableVar v
+  => Verifier v expr a -> IO (Either (VerifierError v expr) a)
 runVerifier = runVerifierWith defaultSMTCfg
 
 --------------------------------------------------------------------------------
 --  Query Monad
 --------------------------------------------------------------------------------
 
-data QueryState l (expr :: (* -> *) -> * -> *) =
+data SomeSym v where
+  SomeSym :: VarSym v a -> SomeSym v
+
+data QueryState v (expr :: (* -> *) -> * -> *) =
   QueryState
-  { _varSymbols :: Map l (VerifierSymbol SBV)
+  { _varSymbols :: Map (VarKey v) (SomeSym v)
   }
 
 makeLenses ''QueryState
 
-qs0 :: Ord l => QueryState l expr
+qs0 :: Ord (VarKey v) => QueryState v expr
 qs0 = QueryState mempty
 
-newtype Query l expr a =
+newtype Query v expr a =
   Query
   { getQuery ::
-      StateT (QueryState l expr) (
-        ExceptT (VerifierError l expr)
+      StateT (QueryState v expr) (
+        ExceptT (VerifierError v expr)
           Symbolic) a
   }
   deriving (Functor, Applicative, Monad,
-            MonadState (QueryState l expr),
-            MonadError (VerifierError l expr))
+            MonadState (QueryState v expr),
+            MonadError (VerifierError v expr))
 
-query :: (Location l) => Query l expr a -> Verifier l expr a
+query :: (VerifiableVar v) => Query v expr a -> Verifier v expr a
 query (Query action) =
   do cfg <- ask
      r <- liftIO (runSMTWith cfg (runExceptT (evalStateT action qs0)))
@@ -158,45 +132,34 @@ query (Query action) =
 --  Query actions
 --------------------------------------------------------------------------------
 
--- | Check a proposition, given an environment containing the instances needed
--- to evaluate it symbolically.
+-- | Check a proposition by evaluating it symbolically (with the default
+-- standard environment) and sending it to the SMT solver.
+checkProp
+  :: (Substitutive expr, VerifiableVar v,
+      EvalOp (Query v expr) SBV expr,
+      VarSym v ~ SBV)
+  => PropOver (expr v) Bool
+  -> Query v expr Bool
+checkProp = checkPropWith id id
+
 checkPropWith
-  :: (Substitutive expr, Location l,
-      EvalOp (EvalT ctx (Query l expr)) SBV expr,
-      HasTypemap BooleanDict ctx)
-  => ctx
-  -> PropOver (expr (Var l)) Bool
-  -> Query l expr Bool
-checkPropWith ctx prop = do
-  symbolicProp <- propToSBV ctx prop
+  :: (Substitutive expr, VerifiableVar v,
+      EvalOp (Query v expr) k expr,
+      EvalOp (Query v expr) k LogicOp)
+  => (k Bool -> SBV Bool)
+  -- ^ Run the evaluation result in SBV
+  -> (forall a. VarSym v a -> k a)
+  -- ^ Lift symbolic variables into the result type
+  -> PropOver (expr v) Bool
+  -> Query v expr Bool
+checkPropWith runTarget liftVar prop = do
+  symbolicProp <- runTarget <$> evalOp (evalOp (fmap liftVar . symbolVar)) prop
   liftSymbolic . S.query $ do
     constrain (bnot symbolicProp)
     cs <- S.checkSat
     case cs of
       S.Unsat -> return True
-      _ -> return False
-
--- | Check a proposition by evaluating it symbolically (with the default
--- standard environment) and sending it to the SMT solver.
-checkProp
-  :: (Substitutive expr, Location l, EvalOp (EvalT EvalContext (Query l expr)) SBV expr)
-  => PropOver (expr (Var l)) Bool
-  -> Query l expr Bool
-checkProp = checkPropWith defaultEvalContext
-
---------------------------------------------------------------------------------
---  Combinators
---------------------------------------------------------------------------------
-
-propToSBV
-  :: (Substitutive expr, Location l, EvalOp (EvalT ctx (Query l expr)) SBV expr,
-      HasTypemap BooleanDict ctx)
-  => ctx
-  -> PropOver (expr (Var l)) Bool
-  -> Query l expr SBool
-propToSBV context prop = do
-  res <- runEvalT (evalOp (evalOp (lift . symbolVar)) prop) context
-  either (throwError . VEEval) return res
+      _       -> return False
 
 --------------------------------------------------------------------------------
 --  Combinators
@@ -208,15 +171,17 @@ propToSBV context prop = do
 -- This is substitution into an expression, where the old expression is just a
 -- variable.
 subVar
-  :: (Substitutive expr, Eq l)
-  => expr (Var l) a
-  -> Var l a
-  -> Var l b
-  -> expr (Var l) b
-subVar newExpr (Var targetName) thisVar@(Var thisName) =
-  case gcast newExpr of
-    Just newExpr' | thisName == targetName -> newExpr'
-    _ -> pureVar thisVar
+  :: (Substitutive expr, VerifiableVar v, Eq (VarKey v))
+  => expr v a
+  -> v a
+  -> v b
+  -> expr v b
+subVar newExpr targetVar thisVar =
+  let targetName = varKey targetVar
+      thisName = varKey thisVar
+  in case eqVarTypes thisVar targetVar of
+       Just Refl | thisName == targetName -> newExpr
+       _         -> pureVar thisVar
 
 --------------------------------------------------------------------------------
 --  Internal Functions
@@ -225,15 +190,16 @@ subVar newExpr (Var targetName) thisVar@(Var thisName) =
 liftSymbolic :: Symbolic a -> Query l v a
 liftSymbolic = Query . lift . lift
 
-symbolVar :: Location l => Var l a -> Query l expr (SBV a)
-symbolVar (Var varLoc) = do
+symbolVar :: VerifiableVar v => v a -> Query v expr (VarSym v a)
+symbolVar theVar = do
+  let varLoc = varKey theVar
   storedSymbol <- Query $ use (varSymbols . at varLoc)
 
   case storedSymbol of
-    Just s -> maybe (throwError (VEMismatchedSymbolType varLoc))
-              return
-              (s ^? _Symbol)
+    Just (SomeSym x) -> case castVarSym theVar x of
+      Just y  -> return y
+      Nothing -> throwError (VEMismatchedSymbolType varLoc)
     Nothing -> do
-      newSymbol <- liftSymbolic (symbolic (locationName varLoc))
-      varSymbols . at varLoc .= Just (_Symbol # newSymbol)
+      newSymbol <- liftSymbolic (symForVar theVar)
+      varSymbols . at varLoc .= Just (SomeSym newSymbol)
       return newSymbol

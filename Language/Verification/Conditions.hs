@@ -71,16 +71,16 @@ data AnnSeq expr var cmd
 -- | Substitutes variables in the given proposition based on the given
 -- assignment.
 subAssignment
-  :: (Substitutive expr, Location l)
-  => Assignment expr (Var l) -> PropOver (expr (Var l)) a -> PropOver (expr (Var l)) a
+  :: (Substitutive expr, VerifiableVar v)
+  => Assignment expr v -> PropOver (expr v) a -> PropOver (expr v) a
 subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr targetVar))
 
 
 -- | Chains substitutions, substituting using each assignment in the given list
 -- in turn.
 chainSub
-  :: (Substitutive expr, Location l)
-  => Prop expr (Var l) -> [Assignment expr (Var l)] -> Prop expr (Var l)
+  :: (Substitutive expr, VerifiableVar v)
+  => Prop expr v -> [Assignment expr v] -> Prop expr v
 chainSub prop []       = prop
 chainSub prop (a : as) = subAssignment a (chainSub prop as)
 
@@ -134,8 +134,8 @@ skipVCs (precond, postcond, ()) = tell [precond *-> postcond]
 
 -- | Generates verification conditions for an assignment.
 assignVCs
-  :: (Substitutive expr, MonadGenVCs expr (Var l) m, Location l)
-  => Triplet expr (Var l) (Assignment expr (Var l)) -> m ()
+  :: (Substitutive expr, MonadGenVCs expr v m, VerifiableVar v)
+  => Triplet expr v (Assignment expr v) -> m ()
 assignVCs (precond, postcond, assignment) = do
   let postcond' = subAssignment assignment postcond
   tell [precond *-> postcond']
@@ -143,9 +143,9 @@ assignVCs (precond, postcond, assignment) = do
 
 -- | Generates verification conditions for a sequence of commands.
 sequenceVCs
-  :: (Substitutive expr, MonadGenVCs expr (Var l) m, Location l)
-  => (Triplet expr (Var l) cmd -> m a)
-  -> Triplet expr (Var l) (AnnSeq expr (Var l) cmd) -> m [a]
+  :: (Substitutive expr, MonadGenVCs expr v m, VerifiableVar v)
+  => (Triplet expr v cmd -> m a)
+  -> Triplet expr v (AnnSeq expr v cmd) -> m [a]
 sequenceVCs cmdVCs (precond, postcond, annSeq) =
   case annSeq of
     -- A sequence of assignments can be verified by checking the precondition
@@ -170,10 +170,10 @@ sequenceVCs cmdVCs (precond, postcond, annSeq) =
 
 -- | Generates verification conditions for a two-branch if command.
 ifVCs
-  :: (Substitutive expr, MonadGenVCs expr (Var l) m)
-  => (Triplet expr (Var l) cmd -> m a)
-  -> (cond -> Prop expr (Var l))
-  -> Triplet expr (Var l) (cond, cmd, cmd) -> m (a, a)
+  :: (Substitutive expr, MonadGenVCs expr v m)
+  => (Triplet expr v cmd -> m a)
+  -> (cond -> Prop expr v)
+  -> Triplet expr v (cond, cmd, cmd) -> m (a, a)
 ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
   let condProp = condToProp cond
   return (,) <*> cmdVCs ((precond *&& condProp), postcond, cmd1)
@@ -184,9 +184,9 @@ ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
 -- command.
 multiIfVCs
   :: (Substitutive expr, Monad m)
-  => (Triplet expr (Var l) cmd -> m ())
-  -> (cond -> Prop expr (Var l))
-  -> Triplet expr (Var l) [(Maybe cond, cmd)] -> m ()
+  => (Triplet expr v cmd -> m ())
+  -> (cond -> Prop expr v)
+  -> Triplet expr v [(Maybe cond, cmd)] -> m ()
 multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
   where
     go precond' ((branchCond, branchCmd) : rest) =
@@ -199,31 +199,14 @@ multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
           cmdVCs (precond', postcond, branchCmd)
     go _ [] = return ()
 
-  -- let branchVcs previousConds branchCond branchCmd = do
-  --       let notPreviousConds = pnot (propOr previousConds)
-  --       case branchCond of
-  --         Just bc -> do
-  --           cmdVCs ((precond *&& notPreviousConds *&& bc), postcond, branchCmd)
-  --           cmdVCs ((precond *&& notPreviousConds *&& pnot bc), postcond, branchCmd)
-  --         Nothing ->
-  --           cmdVCs ((precond *&& notPreviousConds), postcond, branchCmd)
-
-  --     step (branchCond, branchCmd) previousConds =
-  --       do let branchCond' = condToProp <$> branchCond
-  --              bcList = maybe [] (: []) branchCond'
-  --          branchVcs previousConds branchCond' branchCmd
-  --          return (bcList ++ previousConds)
-
-  -- in void . foldrM step [] $ branches
-
 
 -- | Generates verification conditions for a while loop.
 whileVCs
-  :: (Substitutive expr, MonadGenVCs expr (Var l) m)
-  => (Triplet expr (Var l) cmd -> m ())
-  -> (cond -> Prop expr (Var l))
-  -> Prop expr (Var l) -- ^ Loop invariant
-  -> Triplet expr (Var l) (cond, cmd) -> m ()
+  :: (Substitutive expr, MonadGenVCs expr v m)
+  => (Triplet expr v cmd -> m ())
+  -> (cond -> Prop expr v)
+  -> Prop expr v -- ^ Loop invariant
+  -> Triplet expr v (cond, cmd) -> m ()
 whileVCs cmdVCs condToProp invariant (precond, postcond, (cond, body)) = do
   let condProp = condToProp cond
   -- Assert that the invariant is maintained over the loop body

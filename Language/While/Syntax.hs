@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE DeriveFunctor         #-}
@@ -14,8 +15,10 @@
 module Language.While.Syntax where
 
 import           Data.String                      (IsString (..))
+import           Data.Typeable                    ((:~:)(..))
 
 import           Data.SBV
+import           Data.SBV.Internals (SBV(..))
 import           Data.Vinyl                       (Rec (RNil))
 
 import           Control.Lens                     hiding ((...), (.>))
@@ -28,13 +31,14 @@ import           Language.Expression.Curry
 import           Language.Expression.Ops.General
 import           Language.Expression.Ops.Standard (PureEval (..))
 import           Language.Expression.Pretty
+import           Language.Verification
 
 --------------------------------------------------------------------------------
 --  Operator kind
 --------------------------------------------------------------------------------
 
 data WhileOpKind as r where
-  OpLit             :: Integer -> WhileOpKind '[]                 Integer
+  OpLit                        :: Integer -> WhileOpKind '[]      Integer
   OpAdd, OpSub, OpMul          :: WhileOpKind '[Integer, Integer] Integer
   OpEq, OpLT, OpLE, OpGT, OpGE :: WhileOpKind '[Integer, Integer] Bool
   OpAnd, OpOr                  :: WhileOpKind '[Bool   , Bool]    Bool
@@ -140,6 +144,15 @@ data WhileVar l a where
 
 instance Pretty l => Pretty1 (WhileVar l) where
   pretty1 (WhileVar l) = pretty l
+
+instance VerifiableVar (WhileVar String) where
+  type VarKey (WhileVar String) = String
+  type VarSym (WhileVar String) = SBV
+
+  symForVar (WhileVar x) = symbolic x
+  varKey (WhileVar x) = x
+  eqVarTypes (WhileVar _) (WhileVar _) = Just Refl
+  castVarSym (WhileVar _) (SBV x) = Just (SBV x)
 
 --------------------------------------------------------------------------------
 --  Expressions

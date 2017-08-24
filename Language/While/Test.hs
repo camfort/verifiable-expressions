@@ -37,7 +37,6 @@ testConfig = defaultSMTCfg { verbose = True }
 testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
-test :: IO (Either (VerifierError String (Expr WhileOp)) Bool)
-test = runVerifierWith testConfig $ do
-  query $ do
-    checkPartialHoare testPrecond testPostcond testCommandAnn
+test :: IO (Either (VerifierError (WhileVar String) (Expr WhileOp)) Bool)
+test = runVerifierWith testConfig $ query $
+  checkPartialHoare testPrecond testPostcond testCommandAnn

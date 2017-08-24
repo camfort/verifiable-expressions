@@ -19,13 +19,8 @@ module Language.Verification
   , Query
   , query
 
-  -- * Verifiable types and variables
-  , VerifierSymbol
-  , Verifiable
-  , _Symbol
-  , Location(..)
-  , Var(..)
-  , varName
+  -- * Verifiable variables
+  , VerifiableVar(..)
 
   -- * Verifier actions
   , checkProp
@@ -33,7 +28,6 @@ module Language.Verification
 
   -- * Miscellaneous combinators
   , subVar
-  , propToSBV
 
   -- * Expressions
   , module Expression
@@ -41,11 +35,9 @@ module Language.Verification
   -- * SBV re-exports
   , SMTConfig(..)
   , defaultSMTCfg
-  , SymWord
   ) where
 
-import           Data.SBV                      (SMTConfig (..), SymWord,
-                                                defaultSMTCfg)
+import           Data.SBV                   (SMTConfig (..), defaultSMTCfg)
 
+import           Language.Expression        as Expression
 import           Language.Verification.Core
-import           Language.Expression as Expression

@@ -1,10 +1,10 @@
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE EmptyCase                 #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
@@ -29,14 +29,11 @@ module Language.Expression.Pretty
   , prettys1PrecUnop
   ) where
 
--- import Prelude hiding (showParen)
-
 import           Data.Functor.Const
-import           Data.List                     (intersperse)
-import           Data.Monoid                   (Endo (..))
+import           Data.List                        (intersperse)
+import           Data.Monoid                      (Endo (..))
 
 import           Language.Expression.Ops.Standard
-import           Language.Verification
 
 --------------------------------------------------------------------------------
 --  Convenience
@@ -158,9 +155,6 @@ instance {-# OVERLAPPING #-} Pretty a => Pretty [a] where
 instance {-# OVERLAPPING #-} Pretty a => Pretty (Maybe a) where
   prettysPrec p (Just x) = prettysPrec p x
   prettysPrec _ Nothing = \r -> "<nothing>" ++ r
-
-instance Pretty l => Pretty1 (Var l) where
-  prettys1Prec p (Var l) = prettysPrec p l
 
 instance Pretty () where
   pretty = show

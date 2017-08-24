@@ -1,23 +1,27 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE TypeFamilies     #-}
 
 module Language.While.Hoare.Prover where
+
+import           Data.SBV                (SBV)
 
 import           Language.Expression.DSL
 import           Language.Verification
 
-import           Language.While.Syntax
 import           Language.While.Hoare
+import           Language.While.Syntax
 
 
 checkPartialHoare
-  :: Location l
+  :: (VerifiableVar (WhileVar l), VarSym (WhileVar l) ~ SBV)
   => WhileProp l Bool
   -> WhileProp l Bool
   -> AnnCommand l a
-  -> Query l (Expr WhileOp) Bool
+  -> Query (WhileVar l) (Expr WhileOp) Bool
 checkPartialHoare precond postcond cmd =
   do vcs <- case generateVCs precond postcond cmd of
-              Just x -> return x
+              Just x  -> return x
               Nothing -> fail "Command not sufficiently annotated"
 
      let bigVC = foldr (*&&) (plit True) vcs
@@ -25,10 +29,10 @@ checkPartialHoare precond postcond cmd =
      checkProp bigVC
 
 provePartialHoare
-  :: Location l
+  :: (VerifiableVar (WhileVar l), VarSym (WhileVar l) ~ SBV)
   => WhileProp l Bool
   -> WhileProp l Bool
   -> AnnCommand l a
-  -> IO (Either (VerifierError l (Expr WhileOp)) Bool)
+  -> IO (Either (VerifierError (WhileVar l) (Expr WhileOp)) Bool)
 provePartialHoare precond postcond cmd =
   runVerifier . query $ checkPartialHoare precond postcond cmd

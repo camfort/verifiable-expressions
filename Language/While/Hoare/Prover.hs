@@ -18,7 +18,7 @@ checkPartialHoare
   => WhileProp l Bool
   -> WhileProp l Bool
   -> AnnCommand l a
-  -> Query (WhileVar l) (Expr WhileOp) Bool
+  -> Query (WhileVar l) (SBV Bool)
 checkPartialHoare precond postcond cmd =
   do vcs <- case generateVCs precond postcond cmd of
               Just x  -> return x
@@ -33,6 +33,6 @@ provePartialHoare
   => WhileProp l Bool
   -> WhileProp l Bool
   -> AnnCommand l a
-  -> IO (Either (VerifierError (WhileVar l) (Expr WhileOp)) Bool)
+  -> IO (Either (VerifierError (WhileVar l)) Bool)
 provePartialHoare precond postcond cmd =
   runVerifier . query $ checkPartialHoare precond postcond cmd

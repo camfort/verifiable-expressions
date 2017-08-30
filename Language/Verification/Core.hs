@@ -31,7 +31,6 @@ import           Control.Monad.State
 import           Data.Map                         (Map)
 import           Data.SBV                         hiding (OrdSymbolic (..),
                                                    ( # ))
-import qualified Data.SBV.Control                 as S
 
 import           Language.Expression
 import           Language.Expression.DSL          (PropOver)
@@ -41,7 +40,7 @@ import           Language.Expression.Ops.Standard (LogicOp)
 --  Variables
 --------------------------------------------------------------------------------
 
-class (Ord (VarKey v)) => VerifiableVar v where
+class (Typeable v, Ord (VarKey v), Show (VarKey v), Typeable (VarKey v)) => VerifiableVar v where
   type VarKey v
   type VarSym v :: * -> *
 
@@ -56,17 +55,17 @@ class (Ord (VarKey v)) => VerifiableVar v where
 --  Verifier Monad
 --------------------------------------------------------------------------------
 
-data VerifierError v (expr :: (* -> *) -> * -> *)
+data VerifierError v
   = VEMismatchedSymbolType (VarKey v)
   -- ^ The same variable was used for two different symbol types
   | VESbvException String String
   -- ^ When running a query, SBV threw an exception
 
-deriving instance Show (VarKey v) => Show (VerifierError v expr)
-deriving instance Typeable (VarKey v) => Typeable (VerifierError v expr)
+deriving instance Show (VarKey v) => Show (VerifierError v)
+deriving instance Typeable (VarKey v) => Typeable (VerifierError v)
 
-instance (Typeable v, l ~ VarKey v, Show l, Typeable l, Typeable expr) =>
-  Exception (VerifierError v expr) where
+instance (Typeable v, l ~ VarKey v, Show l, Typeable l) =>
+  Exception (VerifierError v) where
 
   displayException = \case
     VEMismatchedSymbolType l ->
@@ -75,26 +74,26 @@ instance (Typeable v, l ~ VarKey v, Show l, Typeable l, Typeable expr) =>
     VESbvException message (_ {- location -}) ->
       "exception from SBV:\n" ++ message
 
-newtype Verifier v expr a =
+newtype Verifier v a =
   Verifier
   { getVerifier ::
       ReaderT SMTConfig (
-        ExceptT (VerifierError v expr)
+        ExceptT (VerifierError v)
           IO) a
   }
   deriving (Functor, Applicative, Monad, MonadIO,
-            MonadReader SMTConfig, MonadError (VerifierError v expr))
+            MonadReader SMTConfig, MonadError (VerifierError v))
 
 runVerifierWith
   :: (VerifiableVar v)
   => SMTConfig
-  -> Verifier v expr a
-  -> IO (Either (VerifierError v expr) a)
+  -> Verifier v a
+  -> IO (Either (VerifierError v) a)
 runVerifierWith config (Verifier action) = runExceptT (runReaderT action config)
 
 runVerifier
   :: VerifiableVar v
-  => Verifier v expr a -> IO (Either (VerifierError v expr) a)
+  => Verifier v a -> IO (Either (VerifierError v) a)
 runVerifier = runVerifierWith defaultSMTCfg
 
 --------------------------------------------------------------------------------
@@ -104,34 +103,35 @@ runVerifier = runVerifierWith defaultSMTCfg
 data SomeSym v where
   SomeSym :: VarSym v a -> SomeSym v
 
-data QueryState v (expr :: (* -> *) -> * -> *) =
+data QueryState v =
   QueryState
   { _varSymbols :: Map (VarKey v) (SomeSym v)
   }
 
 makeLenses ''QueryState
 
-qs0 :: Ord (VarKey v) => QueryState v expr
+qs0 :: Ord (VarKey v) => QueryState v
 qs0 = QueryState mempty
 
-newtype Query v expr a =
+newtype Query v a =
   Query
   { getQuery ::
-      StateT (QueryState v expr) (
-        ExceptT (VerifierError v expr)
-          Symbolic) a
+      StateT (QueryState v) Symbolic a
   }
-  deriving (Functor, Applicative, Monad,
-            MonadState (QueryState v expr),
-            MonadError (VerifierError v expr))
+  deriving (Functor, Applicative, Monad, MonadIO,
+            MonadState (QueryState v))
 
-query :: (VerifiableVar v) => Query v expr a -> Verifier v expr a
-query (Query action) =
-  do cfg <- ask
-     smtResult <- liftIO $ try $ runSMTWith cfg (runExceptT (evalStateT action qs0))
-     case smtResult of
-       Right queryResult -> either throwError return queryResult
-       Left (ErrorCallWithLocation message location) -> throwError (VESbvException message location)
+query :: (VerifiableVar v) => Query v SBool -> Verifier v Bool
+query (Query action) = do
+  cfg <- ask
+  let predicate = evalStateT action qs0
+      smtResult =
+        (Right <$> isTheoremWith cfg predicate) `catches`
+        [ Handler (\ ex -> return (Left ex))
+        , Handler (\ (ErrorCallWithLocation message location) -> return (Left (VESbvException message location)))
+        ]
+
+  liftIO smtResult >>= either throwError return
 
 --------------------------------------------------------------------------------
 --  Query actions
@@ -141,30 +141,26 @@ query (Query action) =
 -- standard environment) and sending it to the SMT solver.
 checkProp
   :: (Substitutive expr, VerifiableVar v,
-      EvalOp (Query v expr) SBV expr,
+      Exception (VerifierError v),
+      EvalOp (Query v) SBV expr,
       VarSym v ~ SBV)
   => PropOver (expr v) Bool
-  -> Query v expr Bool
+  -> Query v SBool
 checkProp = checkPropWith id id
 
 checkPropWith
   :: (Substitutive expr, VerifiableVar v,
-      EvalOp (Query v expr) k expr,
-      EvalOp (Query v expr) k LogicOp)
+      Exception (VerifierError v),
+      EvalOp (Query v) k expr,
+      EvalOp (Query v) k LogicOp)
   => (k Bool -> SBV Bool)
   -- ^ Run the evaluation result in SBV
   -> (forall a. VarSym v a -> k a)
   -- ^ Lift symbolic variables into the result type
   -> PropOver (expr v) Bool
-  -> Query v expr Bool
-checkPropWith runTarget liftVar prop = do
-  symbolicProp <- runTarget <$> evalOp (evalOp (fmap liftVar . symbolVar)) prop
-  liftSymbolic . S.query $ do
-    constrain (bnot symbolicProp)
-    cs <- S.checkSat
-    case cs of
-      S.Unsat -> return True
-      _       -> return False
+  -> Query v SBool
+checkPropWith runTarget liftVar =
+  fmap runTarget . evalOp (evalOp (fmap liftVar . symbolVar))
 
 --------------------------------------------------------------------------------
 --  Combinators
@@ -192,10 +188,13 @@ subVar newExpr targetVar thisVar =
 --  Internal Functions
 --------------------------------------------------------------------------------
 
-liftSymbolic :: Symbolic a -> Query l v a
-liftSymbolic = Query . lift . lift
+liftSymbolic :: Symbolic a -> Query v a
+liftSymbolic = Query . lift
 
-symbolVar :: VerifiableVar v => v a -> Query v expr (VarSym v a)
+throwQuery :: (Exception (VerifierError v)) => VerifierError v -> Query v a
+throwQuery = liftIO . throwIO
+
+symbolVar :: (VerifiableVar v, Exception (VerifierError v)) => v a -> Query v (VarSym v a)
 symbolVar theVar = do
   let varLoc = varKey theVar
   storedSymbol <- Query $ use (varSymbols . at varLoc)
@@ -203,7 +202,7 @@ symbolVar theVar = do
   case storedSymbol of
     Just (SomeSym x) -> case castVarSym theVar x of
       Just y  -> return y
-      Nothing -> throwError (VEMismatchedSymbolType varLoc)
+      Nothing -> throwQuery (VEMismatchedSymbolType varLoc)
     Nothing -> do
       newSymbol <- liftSymbolic (symForVar theVar)
       varSymbols . at varLoc .= Just (SomeSym newSymbol)

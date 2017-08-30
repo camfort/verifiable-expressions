@@ -59,10 +59,10 @@ class (Ord (VarKey v)) => VerifiableVar v where
 data VerifierError v (expr :: (* -> *) -> * -> *)
   = VEMismatchedSymbolType (VarKey v)
   -- ^ The same variable was used for two different symbol types
+  | VESbvException String String
+  -- ^ When running a query, SBV threw an exception
 
 deriving instance Show (VarKey v) => Show (VerifierError v expr)
-deriving instance Eq (VarKey v) => Eq (VerifierError v expr)
-deriving instance Ord (VarKey v) => Ord (VerifierError v expr)
 deriving instance Typeable (VarKey v) => Typeable (VerifierError v expr)
 
 instance (Typeable v, l ~ VarKey v, Show l, Typeable l, Typeable expr) =>
@@ -71,6 +71,9 @@ instance (Typeable v, l ~ VarKey v, Show l, Typeable l, Typeable expr) =>
   displayException = \case
     VEMismatchedSymbolType l ->
       "variable " ++ show l ++ " was used at two different types"
+
+    VESbvException message (_ {- location -}) ->
+      "exception from SBV:\n" ++ message
 
 newtype Verifier v expr a =
   Verifier
@@ -125,8 +128,10 @@ newtype Query v expr a =
 query :: (VerifiableVar v) => Query v expr a -> Verifier v expr a
 query (Query action) =
   do cfg <- ask
-     r <- liftIO (runSMTWith cfg (runExceptT (evalStateT action qs0)))
-     either throwError return r
+     smtResult <- liftIO $ try $ runSMTWith cfg (runExceptT (evalStateT action qs0))
+     case smtResult of
+       Right queryResult -> either throwError return queryResult
+       Left (ErrorCallWithLocation message location) -> throwError (VESbvException message location)
 
 --------------------------------------------------------------------------------
 --  Query actions

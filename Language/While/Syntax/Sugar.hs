@@ -2,9 +2,13 @@
 
 module Language.While.Syntax.Sugar where
 
+import           Data.SBV                        (AlgReal)
+
+import           Data.Vinyl.Curry
+
 import           Language.Expression
-import           Language.Expression.Curry
-import           Language.Expression.Ops.General
+import           Language.Expression.GeneralOp
+import           Language.Expression.Util
 import           Language.While.Hoare
 import           Language.While.Syntax
 
@@ -18,7 +22,7 @@ infix 8 .>=
 infixr 7 .&&
 infixr 6 .||
 
-(.=.) :: l -> WhileExpr l Integer -> Command l a
+(.=.) :: l -> WhileExpr l AlgReal -> Command l a
 (.=.) = CAssign
 
 (\\) :: Command l a -> Command l a -> Command l a
@@ -27,19 +31,19 @@ infixr 6 .||
 (^^^) :: WhileProp l Bool -> AnnCommand l () -> AnnCommand l ()
 prop ^^^ command = CAnn (PropAnn prop ()) command
 
-(.==) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.==) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
 (.==) = EOp ... rcurry (Op OpEq)
 
-(.<) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.<) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
 (.<) = EOp ... rcurry (Op OpLT)
 
-(.>) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.>) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
 (.>) = EOp ... rcurry (Op OpGT)
 
-(.<=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.<=) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
 (.<=) = EOp ... rcurry (Op OpLE)
 
-(.>=) :: WhileExpr l Integer -> WhileExpr l Integer -> WhileExpr l Bool
+(.>=) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
 (.>=) = EOp ... rcurry (Op OpGE)
 
 (.&&) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool

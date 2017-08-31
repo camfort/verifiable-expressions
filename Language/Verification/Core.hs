@@ -16,7 +16,6 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
 module Language.Verification.Core where
 
@@ -33,8 +32,7 @@ import           Data.SBV                         hiding (OrdSymbolic (..),
                                                    ( # ))
 
 import           Language.Expression
-import           Language.Expression.DSL          (PropOver)
-import           Language.Expression.Ops.Standard (LogicOp)
+import           Language.Expression.Prop          (Prop, LogicOp)
 
 --------------------------------------------------------------------------------
 --  Variables
@@ -144,7 +142,7 @@ checkProp
       Exception (VerifierError v),
       EvalOp (Query v) SBV expr,
       VarSym v ~ SBV)
-  => PropOver (expr v) Bool
+  => Prop (expr v) Bool
   -> Query v SBool
 checkProp = checkPropWith id id
 
@@ -157,7 +155,7 @@ checkPropWith
   -- ^ Run the evaluation result in SBV
   -> (forall a. VarSym v a -> k a)
   -- ^ Lift symbolic variables into the result type
-  -> PropOver (expr v) Bool
+  -> Prop (expr v) Bool
   -> Query v SBool
 checkPropWith runTarget liftVar =
   fmap runTarget . evalOp (evalOp (fmap liftVar . symbolVar))

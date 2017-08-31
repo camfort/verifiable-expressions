@@ -13,18 +13,18 @@ import Control.Monad.Writer
 
 import           Language.While.Syntax
 
-import           Language.Expression.DSL          hiding (Expr, Prop)
+import           Language.Expression.Prop
 import           Language.Expression.Pretty
 import           Language.Verification
-import           Language.Verification.Conditions hiding (Prop)
+import           Language.Verification.Conditions
 
-type WhileProp l = PropOver (WhileExpr l)
+type WhileProp l = Prop (WhileExpr l)
 
 data PropAnn l a = PropAnn (WhileProp l Bool) a
 
 type AnnCommand l a = Command l (PropAnn l a)
 
-type VProp l = PropOver (Expr WhileOp (WhileVar l))
+type VProp l = Prop (Expr WhileOp (WhileVar l))
 
 instance (Pretty l, Pretty a) => Pretty (PropAnn l a) where
   prettysPrec _ (PropAnn prop ann) = prettysPrec 10 prop . showString " , " . prettysPrec 10 ann

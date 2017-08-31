@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
@@ -144,7 +144,6 @@ class (Operator op) => EvalOp f k op where
 -- context.
 evalOp' :: EvalOp Identity g op => (forall b. t b -> g b) -> op t a -> g a
 evalOp' f = runIdentity . evalOp (Identity . f)
-
 
 class HEq op where
   liftHEq

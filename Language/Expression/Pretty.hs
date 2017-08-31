@@ -30,10 +30,10 @@ module Language.Expression.Pretty
   ) where
 
 import           Data.Functor.Const
-import           Data.List                        (intersperse)
-import           Data.Monoid                      (Endo (..))
+import           Data.List           (intersperse)
+import           Data.Monoid         (Endo (..))
 
-import           Language.Expression.Ops.Standard
+import           Language.Expression
 
 --------------------------------------------------------------------------------
 --  Convenience
@@ -93,24 +93,6 @@ class Pretty2 (op :: (k -> *) -> k -> *) where
 
   prettys2Prec :: (Pretty1 t) => Int -> op t a -> ShowS
   prettys2Prec _ x s = pretty2 x ++ s
-
---------------------------------------------------------------------------------
---  Operator instances
---------------------------------------------------------------------------------
-
-instance Pretty2 LogicOp where
-  prettys2Prec p = \case
-    LogLit True -> \r -> "T" ++ r
-    LogLit False -> \r -> "F" ++ r
-    LogNot x -> showParen (p > 8) $ showString "¬ " . prettys1Prec 9 x
-    LogAnd x y ->
-      showParen (p > 3) $ prettys1Prec 4 x . showString " ∧ " . prettys1Prec 4 y
-    LogOr  x y ->
-      showParen (p > 2) $ prettys1Prec 3 x . showString " ∨ " . prettys1Prec 3 y
-    LogImpl  x y ->
-      showParen (p > 1) $ prettys1Prec 2 x . showString " -> " . prettys1Prec 2 y
-    LogEquiv  x y ->
-      showParen (p > 0) $ prettys1Prec 1 x . showString " <-> " . prettys1Prec 1 y
 
 --------------------------------------------------------------------------------
 --  Combinatory instances

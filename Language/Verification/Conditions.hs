@@ -1,10 +1,9 @@
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
 
 {- |
 
@@ -14,8 +13,7 @@ Combinators for generating verification conditions for programs.
 module Language.Verification.Conditions
   (
   -- * Types
-    Prop
-  , Assignment(..)
+    Assignment(..)
   , AnnSeq(..)
   , Triplet
 
@@ -36,19 +34,19 @@ module Language.Verification.Conditions
   , emptyAnnSeq
   , propAnnSeq
   , cmdAnnSeq
+
+  -- * Propositions
+  , module Language.Expression.Prop
   ) where
 
-import           Control.Monad.Writer    (MonadWriter (tell))
+import           Control.Monad.Writer     (MonadWriter (tell))
 
-import           Language.Expression.DSL hiding (Prop)
+import           Language.Expression.Prop
 import           Language.Verification
 
 --------------------------------------------------------------------------------
 --  Exposed Types
 --------------------------------------------------------------------------------
-
--- | A proposition over expressions in the language.
-type Prop (expr :: (* -> *) -> * -> *) var = PropOver (expr var) Bool
 
 -- | An assignment of a particular expression to a particular variable.
 data Assignment expr var where
@@ -61,7 +59,7 @@ data AnnSeq expr var cmd
   -- ^ Just a series of assignments without annotations
   | CmdAssign cmd [Assignment expr var]
   -- ^ A command followed by a series of assignments
-  | Annotation (AnnSeq expr var cmd) (PropOver (expr var) Bool) (AnnSeq expr var cmd)
+  | Annotation (AnnSeq expr var cmd) (Prop (expr var) Bool) (AnnSeq expr var cmd)
   -- ^ An initial sequence, followed by an annotation, then another sequence
 
 --------------------------------------------------------------------------------
@@ -72,7 +70,7 @@ data AnnSeq expr var cmd
 -- assignment.
 subAssignment
   :: (Substitutive expr, VerifiableVar v)
-  => Assignment expr v -> PropOver (expr v) a -> PropOver (expr v) a
+  => Assignment expr v -> Prop (expr v) a -> Prop (expr v) a
 subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr targetVar))
 
 
@@ -80,7 +78,7 @@ subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr
 -- in turn.
 chainSub
   :: (Substitutive expr, VerifiableVar v)
-  => Prop expr v -> [Assignment expr v] -> Prop expr v
+  => Prop (expr v) Bool -> [Assignment expr v] -> Prop (expr v) Bool
 chainSub prop []       = prop
 chainSub prop (a : as) = subAssignment a (chainSub prop as)
 
@@ -98,7 +96,7 @@ joinAnnSeq _ _ = Nothing
 emptyAnnSeq :: AnnSeq expr var cmd
 emptyAnnSeq = JustAssign []
 
-propAnnSeq :: PropOver (expr var) Bool -> AnnSeq expr var cmd
+propAnnSeq :: Prop (expr var) Bool -> AnnSeq expr var cmd
 propAnnSeq p = Annotation emptyAnnSeq p emptyAnnSeq
 
 cmdAnnSeq :: cmd -> AnnSeq expr var cmd
@@ -120,10 +118,9 @@ instance Monoid (JoinAnnSeq expr var cmd) where
 --  Generating verification conditions
 --------------------------------------------------------------------------------
 
-class MonadWriter [Prop expr var] m => MonadGenVCs expr var m | m -> expr var
-instance MonadWriter [Prop expr var] m => MonadGenVCs expr var m
+type MonadGenVCs expr var = MonadWriter [Prop (expr var) Bool]
 
-type Triplet expr var a = (Prop expr var, Prop expr var, a)
+type Triplet expr var a = (Prop (expr var) Bool, Prop (expr var) Bool, a)
 
 -- | Generates verification conditions for a skip statement.
 skipVCs
@@ -172,7 +169,7 @@ sequenceVCs cmdVCs (precond, postcond, annSeq) =
 ifVCs
   :: (Substitutive expr, MonadGenVCs expr v m)
   => (Triplet expr v cmd -> m a)
-  -> (cond -> Prop expr v)
+  -> (cond -> Prop (expr v) Bool)
   -> Triplet expr v (cond, cmd, cmd) -> m (a, a)
 ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
   let condProp = condToProp cond
@@ -185,7 +182,7 @@ ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
 multiIfVCs
   :: (Substitutive expr, Monad m)
   => (Triplet expr v cmd -> m ())
-  -> (cond -> Prop expr v)
+  -> (cond -> Prop (expr v) Bool)
   -> Triplet expr v [(Maybe cond, cmd)] -> m ()
 multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
   where
@@ -204,8 +201,8 @@ multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
 whileVCs
   :: (Substitutive expr, MonadGenVCs expr v m)
   => (Triplet expr v cmd -> m ())
-  -> (cond -> Prop expr v)
-  -> Prop expr v -- ^ Loop invariant
+  -> (cond -> Prop (expr v) Bool)
+  -> Prop (expr v) Bool -- ^ Loop invariant
   -> Triplet expr v (cond, cmd) -> m ()
 whileVCs cmdVCs condToProp invariant (precond, postcond, (cond, body)) = do
   let condProp = condToProp cond

@@ -6,7 +6,7 @@ module Language.While.Hoare.Prover where
 
 import           Data.SBV                (SBV)
 
-import           Language.Expression.DSL
+import           Language.Expression.Prop
 import           Language.Verification
 
 import           Language.While.Hoare

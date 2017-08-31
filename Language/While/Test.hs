@@ -3,8 +3,8 @@
 
 module Language.While.Test where
 
-import           Language.Expression.DSL     (expr, (*&&))
 import           Language.Expression.Pretty
+import           Language.Expression.Prop
 import           Language.Verification
 
 import           Language.While.Hoare
@@ -32,7 +32,7 @@ testPostcond =
   expr ("R" .< "Y")
 
 testConfig :: SMTConfig
-testConfig = defaultSMTCfg { verbose = True }
+testConfig = defaultSMTCfg { verbose = False }
 
 testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn

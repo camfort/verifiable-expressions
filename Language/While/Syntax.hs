@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE DeriveFunctor         #-}
@@ -9,28 +8,29 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
 
 
 module Language.While.Syntax where
 
-import           Data.String                      (IsString (..))
-import           Data.Typeable                    ((:~:)(..))
+import           Data.String                     (IsString (..))
+import           Data.Typeable                   ((:~:) (..))
 
 import           Data.SBV
-import           Data.SBV.Internals (SBV(..))
-import           Data.Vinyl                       (Rec (RNil))
+import           Data.SBV.Internals              (SBV (..))
+import           Data.Vinyl                      (Rec (RNil))
+import           Data.Vinyl.Curry
 
-import           Control.Lens                     hiding ((...), (.>))
+import           Control.Lens                    hiding ((...), (.>))
 import           Control.Monad.State
-import           Data.Map                         (Map)
-import qualified Data.Map                         as Map
+import           Data.Map                        (Map)
+import qualified Data.Map                        as Map
 
 import           Language.Expression
-import           Language.Expression.Curry
-import           Language.Expression.Ops.General
-import           Language.Expression.Ops.Standard (PureEval (..))
+import           Language.Expression.GeneralOp
 import           Language.Expression.Pretty
+import           Language.Expression.Util
 import           Language.Verification
 
 --------------------------------------------------------------------------------
@@ -38,15 +38,15 @@ import           Language.Verification
 --------------------------------------------------------------------------------
 
 data WhileOpKind as r where
-  OpLit                        :: Integer -> WhileOpKind '[]      Integer
-  OpAdd, OpSub, OpMul          :: WhileOpKind '[Integer, Integer] Integer
-  OpEq, OpLT, OpLE, OpGT, OpGE :: WhileOpKind '[Integer, Integer] Bool
+  OpLit                        :: AlgReal -> WhileOpKind '[]      AlgReal
+  OpAdd, OpSub, OpMul          :: WhileOpKind '[AlgReal, AlgReal] AlgReal
+  OpEq, OpLT, OpLE, OpGT, OpGE :: WhileOpKind '[AlgReal, AlgReal] Bool
   OpAnd, OpOr                  :: WhileOpKind '[Bool   , Bool]    Bool
   OpNot                        :: WhileOpKind '[Bool]             Bool
 
 
-instance (Applicative f, Applicative g) =>
-  EvalOpMany f (PureEval g) WhileOpKind where
+instance (Applicative f) =>
+  EvalOpMany f Identity WhileOpKind where
 
   evalMany = \case
     OpLit x -> \_ -> pure (pure x)
@@ -68,7 +68,7 @@ instance (Applicative f, Applicative g) =>
 
 instance (Applicative f) => EvalOpMany f SBV WhileOpKind where
   evalMany = \case
-    OpLit x -> \_ -> pure (fromIntegral x)
+    OpLit x -> \_ -> pure (literal x)
 
     OpAdd -> pure . runcurry (+)
     OpSub -> pure . runcurry (-)
@@ -140,7 +140,7 @@ type WhileOp = GeneralOp WhileOpKind
 --------------------------------------------------------------------------------
 
 data WhileVar l a where
-  WhileVar :: l -> WhileVar l Integer
+  WhileVar :: l -> WhileVar l AlgReal
 
 instance Pretty l => Pretty1 (WhileVar l) where
   pretty1 (WhileVar l) = pretty l
@@ -160,8 +160,8 @@ instance VerifiableVar (WhileVar String) where
 
 type WhileExpr l = Expr WhileOp (WhileVar l)
 
-instance Num (WhileExpr l Integer) where
-  fromInteger x = EOp (Op (OpLit x) RNil)
+instance Num (WhileExpr l AlgReal) where
+  fromInteger x = EOp (Op (OpLit (fromInteger x)) RNil)
 
   (+) = EOp ... rcurry (Op OpAdd)
   (*) = EOp ... rcurry (Op OpMul)
@@ -169,7 +169,7 @@ instance Num (WhileExpr l Integer) where
   abs = error "can't take abs of expressions"
   signum = error "can't take signum of expressions"
 
-instance IsString s => IsString (WhileExpr s Integer) where
+instance IsString s => IsString (WhileExpr s AlgReal) where
   fromString = EVar . WhileVar . fromString
 
 --------------------------------------------------------------------------------
@@ -180,7 +180,7 @@ data Command l a
   = CAnn a (Command l a)
   | CSeq (Command l a) (Command l a)
   | CSkip
-  | CAssign l (WhileExpr l Integer)
+  | CAssign l (WhileExpr l AlgReal)
   | CIf (WhileExpr l Bool) (Command l a) (Command l a)
   | CWhile (WhileExpr l Bool) (Command l a)
 
@@ -224,13 +224,13 @@ evalWhileExpr
   => (forall x. WhileVar l x -> m x)
   -> WhileExpr l a -> m a
 evalWhileExpr f
-  = fmap (runIdentity . getPureEval)
-  . evalOp (fmap (PureEval . Identity) . f)
+  = fmap runIdentity
+  . evalOp (fmap Identity . f)
 
 oneStep
   :: (Ord l)
   => Command l a
-  -> State (Map l Integer) (StepResult (Command l a))
+  -> State (Map l AlgReal) (StepResult (Command l a))
 oneStep = \case
   CAnn ann c -> fmap (CAnn ann) <$> oneStep c
 
@@ -269,7 +269,7 @@ oneStep = \case
          _ -> return Failed
 
 
-runCommand :: (Ord l) => Command l a -> State (Map l Integer) Bool
+runCommand :: (Ord l) => Command l a -> State (Map l AlgReal) Bool
 runCommand command =
   do s <- oneStep command
      case s of
@@ -281,8 +281,5 @@ runCommand command =
 --  Combinators
 --------------------------------------------------------------------------------
 
-(...) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-(f ... g) x y = f (g x y)
-
-lookupVar :: (Ord l) => Map l Integer -> WhileVar l a -> Maybe a
+lookupVar :: (Ord l) => Map l AlgReal -> WhileVar l a -> Maybe a
 lookupVar env (WhileVar s) = Map.lookup s env

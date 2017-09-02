@@ -45,9 +45,9 @@ instance Operator (GeneralOp op) where
     Op o args -> Op o <$> rtraverse f args
 
 
-instance (Monad m, EvalOpMany m k op) => EvalOp m k (GeneralOp op) where
-  evalOp f = \case
-    Op o args -> rtraverse f args >>= evalMany o
+instance (EvalOpMany m k op) => EvalOp m k (GeneralOp op) where
+  evalOp = \case
+    Op o args -> evalMany o args
 
 
 instance EqOpMany op => HEq (GeneralOp op) where

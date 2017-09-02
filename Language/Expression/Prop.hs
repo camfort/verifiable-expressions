@@ -37,7 +37,6 @@ import           Data.List                  (foldl')
 import           Data.Typeable
 
 import           Data.Functor.Classes
-import           Data.Functor.Compose
 import           Data.Functor.Identity
 
 import           Data.SBV
@@ -115,22 +114,22 @@ instance Operator LogicOp where
     LogEquiv x y -> LogEquiv <$> f x <*> f y
 
 instance (Applicative f) => EvalOp f Identity LogicOp where
-  evalOp f = \case
-    LogLit b -> pure (pure b)
-    LogNot x -> fmap not <$> f x
-    LogAnd x y -> liftA2' f (&&) x y
-    LogOr x y -> liftA2' f (||) x y
-    LogImpl x y -> liftA2' f (==>) x y
-    LogEquiv x y -> liftA2' f (<=>) x y
+  evalOp = \case
+    LogLit b -> pure $ pure b
+    LogNot x -> pure $ not <$> x
+    LogAnd x y -> pure $ liftA2 (&&) x y
+    LogOr x y -> pure $ liftA2 (||) x y
+    LogImpl x y -> pure $ liftA2 (==>) x y
+    LogEquiv x y -> pure $ liftA2 (<=>) x y
 
 instance (Applicative f) => EvalOp f SBV LogicOp where
-  evalOp f = \case
+  evalOp = \case
     LogLit b -> pure (fromBool b)
-    LogNot x -> bnot <$> f x
-    LogAnd x y -> liftA2 (&&&) (f x) (f y)
-    LogOr x y -> liftA2 (|||) (f x) (f y)
-    LogImpl x y -> liftA2 (==>) (f x) (f y)
-    LogEquiv x y -> liftA2 (<=>) (f x) (f y)
+    LogNot x -> pure $ bnot x
+    LogAnd x y -> pure $ x &&& y
+    LogOr x y -> pure $ x ||| y
+    LogImpl x y -> pure $ x ==> y
+    LogEquiv x y -> pure $ x <=> y
 
 instance HEq LogicOp where
   liftHEq _ _ (LogLit x) (LogLit y) = x == y
@@ -162,9 +161,6 @@ instance Pretty2 LogicOp where
 --------------------------------------------------------------------------------
 --  Internal Combinators
 --------------------------------------------------------------------------------
-
-liftA2' :: (Applicative f, Applicative g) => (a -> f (g b)) -> (b -> b -> c) -> a -> a -> f (g c)
-liftA2' f g x y = getCompose (liftA2 g (Compose (f x)) (Compose (f y)))
 
 svEq :: (Typeable a, Typeable b, Eq a) => a -> b -> Bool
 svEq (x :: a) (y :: b)

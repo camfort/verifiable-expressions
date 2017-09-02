@@ -28,6 +28,7 @@ module Language.Expression
   , mapVars
 
   , EvalOp(..)
+  , mapEvalOp
   , evalOp'
   , HEq(..)
   , liftLiftEq
@@ -66,7 +67,7 @@ module Language.Expression
   ) where
 
 import           Data.Data             -- (Typeable, Data, (:~:)(..))
-import           Control.Monad (ap)
+import           Control.Monad (ap, (>=>))
 
 import           Data.Functor.Identity
 import           Data.Functor.Compose
@@ -138,12 +139,17 @@ mapVars f = runIdentity . traverseVars (Identity . f)
 -- @k@ is something like 'Data.SBV.SBV', i.e. a constructor of concrete data
 -- types, rather than a monadic or applicative context.
 class (Operator op) => EvalOp f k op where
-  evalOp :: (forall b. t b -> f (k b)) -> op t a -> f (k a)
+  evalOp :: op k a -> f (k a)
+
+mapEvalOp
+  :: (Monad f, EvalOp f k op)
+  => (forall b. t b -> f (k b)) -> op t a -> f (k a)
+mapEvalOp f = htraverseOp f >=> evalOp
 
 -- | A convenience function for when an operator can be evaluated with no
 -- context.
-evalOp' :: EvalOp Identity g op => (forall b. t b -> g b) -> op t a -> g a
-evalOp' f = runIdentity . evalOp (Identity . f)
+evalOp' :: EvalOp Identity k op => op k a -> k a
+evalOp' = runIdentity . mapEvalOp Identity
 
 class HEq op where
   liftHEq
@@ -189,7 +195,7 @@ instance Operator (OpChoice '[]) where
   htraverseOp _ = noOps
 
 instance EvalOp f t (OpChoice '[]) where
-  evalOp _ = noOps
+  evalOp = noOps
 
 instance HEq (OpChoice '[]) where
   liftHEq _ _ _ = noOps
@@ -204,9 +210,9 @@ instance (Operator op, Operator (OpChoice ops)) =>
 instance (EvalOp f t op, EvalOp f t (OpChoice ops)) =>
   EvalOp f t (OpChoice (op : ops)) where
 
-  evalOp f = \case
-    OpThis x -> evalOp f x
-    OpThat x -> evalOp f x
+  evalOp = \case
+    OpThis x -> evalOp x
+    OpThat x -> evalOp x
 
 instance (HEq op, HEq (OpChoice ops)) =>
   HEq (OpChoice (op : ops)) where
@@ -360,10 +366,10 @@ instance (Operator op) => Operator (Expr op) where
 
 -- | Expressions can be evaluated whenever the contained operators can be
 -- evaluated.
-instance (EvalOp f t op) => EvalOp f t (Expr op) where
-  evalOp f = \case
-    EVar x -> f x
-    EOp op -> evalOp (evalOp f) op
+instance (Monad f, EvalOp f k op) => EvalOp f k (Expr op) where
+  evalOp = \case
+    EVar x -> pure x
+    EOp op -> mapEvalOp evalOp op
 
 
 traverseOperators
@@ -429,8 +435,8 @@ instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
 
   bindVars f = fmap Expr' . bindVars (fmap getExpr' . f) . getExpr'
 
-instance (EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
-  evalOp f = evalOp f . getExpr'
+instance (Monad f, EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
+  evalOp = evalOp . getExpr'
 
 
 -- | Squash a composition of expressions over different operators into a

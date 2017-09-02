@@ -148,8 +148,9 @@ instance Pretty l => Pretty1 (WhileVar l) where
 instance VerifiableVar (WhileVar String) where
   type VarKey (WhileVar String) = String
   type VarSym (WhileVar String) = SBV
-
-  symForVar (WhileVar x) = symbolic x
+  type VarEnv (WhileVar String) = ()
+ 
+  symForVar (WhileVar x) = const $ symbolic x
   varKey (WhileVar x) = x
   eqVarTypes (WhileVar _) (WhileVar _) = Just Refl
   castVarSym (WhileVar _) (SBV x) = Just (SBV x)
@@ -225,7 +226,7 @@ evalWhileExpr
   -> WhileExpr l a -> m a
 evalWhileExpr f
   = fmap runIdentity
-  . evalOp (fmap Identity . f)
+  . mapEvalOp (fmap Identity . f)
 
 oneStep
   :: (Ord l)

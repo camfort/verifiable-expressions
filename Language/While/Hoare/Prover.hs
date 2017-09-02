@@ -29,10 +29,10 @@ checkPartialHoare precond postcond cmd =
      checkProp bigVC
 
 provePartialHoare
-  :: (VerifiableVar (WhileVar l), VarSym (WhileVar l) ~ SBV)
+  :: (VerifiableVar (WhileVar l), VarSym (WhileVar l) ~ SBV, VarEnv (WhileVar l) ~ ())
   => WhileProp l Bool
   -> WhileProp l Bool
   -> AnnCommand l a
   -> IO (Either (VerifierError (WhileVar l)) Bool)
 provePartialHoare precond postcond cmd =
-  runVerifier . query $ checkPartialHoare precond postcond cmd
+  runVerifier . flip query () $ checkPartialHoare precond postcond cmd

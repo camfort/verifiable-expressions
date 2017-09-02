@@ -38,5 +38,5 @@ testVcs :: Maybe [VProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
 test :: IO (Either (VerifierError (WhileVar String)) Bool)
-test = runVerifierWith testConfig $ query $
+test = runVerifierWith testConfig $ flip query () $
   checkPartialHoare testPrecond testPostcond testCommandAnn

@@ -23,8 +23,8 @@ module Language.Verification
   , VerifiableVar(..)
 
   -- * Verifier actions
-  , checkProp
-  , checkPropWith
+  , evalProp
+  , evalProp'
 
   -- * Miscellaneous combinators
   , subVar

@@ -20,21 +20,18 @@
 module Language.Verification.Core where
 
 import           Control.Exception
-import           Data.Typeable                    ((:~:) (..), Typeable)
+import           Data.Typeable            ((:~:) (..), Typeable)
 
-import Control.Monad.Trans.Identity
-
-import           Control.Lens                     hiding ((.>))
+import           Control.Lens             hiding ((.>))
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State
 
-import           Data.Map                         (Map)
-import           Data.SBV                         hiding (OrdSymbolic (..),
-                                                   ( # ))
+import           Data.Map                 (Map)
+import           Data.SBV                 hiding (OrdSymbolic (..), ( # ))
 
 import           Language.Expression
-import           Language.Expression.Prop          (Prop, LogicOp)
+import           Language.Expression.Prop (LogicOp, Prop)
 
 --------------------------------------------------------------------------------
 --  Variables
@@ -136,36 +133,31 @@ query (Query action) env = do
 --  Query actions
 --------------------------------------------------------------------------------
 
--- | Check a proposition by evaluating it symbolically and sending it to the SMT
--- solver.
-checkProp
+evalProp
   :: ( Substitutive expr
      , VerifiableVar v
      , Exception (VerifierError v)
-     , EvalOp (IdentityT (Query v)) SBV expr
-     -- ideally: @forall m. Monad m => EvalOp m SBV expr@
-     , VarSym v ~ SBV)
-  => Prop (expr v) Bool
-  -> Query v SBool
-checkProp = runIdentityT . checkPropWith id id
-
-checkPropWith
-  :: ( Substitutive expr
-     , VerifiableVar v
-     , Exception (VerifierError v)
-     , MonadTrans t
-     , m ~ t (Query v)
-     , Monad m
      , EvalOp m k expr
-     , EvalOp m k LogicOp)
-  => (k Bool -> SBV Bool)
-  -- ^ Run the evaluation result in SBV
+     , EvalOp m k LogicOp
+     , Monad m
+     )
+  => (forall a. Query v a -> m a)
   -> (forall a. VarSym v a -> k a)
-  -- ^ Lift symbolic variables into the result type
-  -> Prop (expr v) Bool
-  -> m SBool
-checkPropWith runTarget liftVar =
-  fmap runTarget . mapEvalOp (mapEvalOp (lift . fmap liftVar . symbolVar))
+  -> Prop (expr v) b
+  -> m (k b)
+evalProp liftQuery liftVar =
+  mapEvalOp (mapEvalOp (liftQuery . fmap liftVar . symbolVar))
+
+evalProp'
+  :: ( Substitutive expr
+     , VerifiableVar v
+     , Exception (VerifierError v)
+     , EvalOp (Query v) SBV expr
+     , VarSym v ~ SBV
+     )
+  => Prop (expr v) b
+  -> Query v (SBV b)
+evalProp' = evalProp id id
 
 --------------------------------------------------------------------------------
 --  Combinators

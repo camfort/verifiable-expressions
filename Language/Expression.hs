@@ -43,6 +43,7 @@ module Language.Expression
   , traverseOperators
   , mapOperators
   , squashExpression
+  , eop'
 
   -- * Operator union
   , OpChoice(..)
@@ -453,6 +454,9 @@ squashExpression
   . joinExpression
   . hmapOp (mapOperators (review chooseOp))
   . mapOperators (review chooseOp)
+
+eop' :: (Operator op, Operator (OpChoice ops), ChooseOp op ops) => op (Expr' ops v) a -> Expr' ops v a
+eop' = Expr' . EOp . review chooseOp . hmapOp getExpr'
 
 --------------------------------------------------------------------------------
 --  Simple expressions

@@ -1,4 +1,6 @@
 {-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveTraversable     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE KindSignatures        #-}
@@ -39,8 +41,12 @@ module Language.Verification.Conditions
   , module Language.Expression.Prop
   ) where
 
-import           Control.Monad.Writer     (MonadWriter (tell))
+import           Data.List                  (intersperse)
+import           Data.Monoid                (Endo (..))
 
+import           Control.Monad.Writer       (MonadWriter (tell))
+
+import           Language.Expression.Pretty
 import           Language.Expression.Prop
 import           Language.Verification
 
@@ -52,6 +58,10 @@ import           Language.Verification
 data Assignment expr var where
   Assignment :: var a -> expr var a -> Assignment expr var
 
+instance (Pretty1 var, Pretty2 expr) => Pretty (Assignment expr var) where
+  prettysPrec p (Assignment v e) = showParen (p > 9) $
+    prettys1Prec 10 v . showString " := " . prettys2Prec 10 e
+
 -- | An annotated sequence. Consists of runs of assignments, with other commands
 -- separated by annotations.
 data AnnSeq expr var cmd
@@ -61,6 +71,28 @@ data AnnSeq expr var cmd
   -- ^ A command followed by a series of assignments
   | Annotation (AnnSeq expr var cmd) (Prop (expr var) Bool) (AnnSeq expr var cmd)
   -- ^ An initial sequence, followed by an annotation, then another sequence
+  deriving (Functor, Foldable, Traversable)
+
+instance (Pretty2 expr, Pretty1 var, Pretty cmd) => Pretty (AnnSeq expr var cmd) where
+  prettysPrec _ (JustAssign as)
+    = appEndo . mconcat
+    . intersperse (Endo (showString "; "))
+    . map (Endo . prettysPrec 10)
+    $ as
+
+  prettysPrec _ (CmdAssign cmd as)
+    =  appEndo . mconcat
+      . intersperse (Endo (showString "; "))
+      . (Endo (prettysPrec 10 cmd) :)
+      . map (Endo . prettysPrec 10)
+      $ as
+
+  prettysPrec _ (Annotation l p r)
+    = prettysPrec 10 l
+    . showString "; {"
+    . prettysPrec 10 p
+    . showString "}"
+    . prettysPrec 10 r
 
 --------------------------------------------------------------------------------
 --  Combinators
@@ -82,16 +114,19 @@ chainSub
 chainSub prop []       = prop
 chainSub prop (a : as) = subAssignment a (chainSub prop as)
 
+
 -- | Joins two annotations together without a Hoare annotation in between. Fails
 -- if this would place two non-assignment commands after each other, because
 -- these need an annotation.
 joinAnnSeq :: AnnSeq expr var cmd -> AnnSeq expr var cmd -> Maybe (AnnSeq expr var cmd)
 joinAnnSeq (JustAssign xs) (JustAssign ys) = return $ JustAssign (xs ++ ys)
 joinAnnSeq (CmdAssign cmd xs) (JustAssign ys) = return $ CmdAssign cmd (xs ++ ys)
-joinAnnSeq (JustAssign []) s@(CmdAssign _ _) = return s
+joinAnnSeq s (JustAssign []) = return s
+joinAnnSeq (JustAssign []) s = return s
 joinAnnSeq (Annotation l p r) r' = Annotation l p <$> joinAnnSeq r r'
-joinAnnSeq l' (Annotation l p r) = joinAnnSeq l' l >>= \l'' -> return $ Annotation l'' p r
+joinAnnSeq l' (Annotation l p r) = (\l'' -> Annotation l'' p r) <$> joinAnnSeq l' l
 joinAnnSeq _ _ = Nothing
+
 
 emptyAnnSeq :: AnnSeq expr var cmd
 emptyAnnSeq = JustAssign []
@@ -101,6 +136,7 @@ propAnnSeq p = Annotation emptyAnnSeq p emptyAnnSeq
 
 cmdAnnSeq :: cmd -> AnnSeq expr var cmd
 cmdAnnSeq c = CmdAssign c []
+
 
 -- | 'JoinAnnSeq' forms a 'Monoid' out of 'AnnSeq' by propagating failure to
 -- join arising from 'joinAnnSeq'.

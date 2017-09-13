@@ -40,8 +40,8 @@ instance HBind (BV g) where
 
 instance HMonad (BV g)
 
--- instance HFoldable (BV g) where
---   hfoldMap = defaultHfoldMap
+-- instance (HFoldableAt k g) => HFoldableAt k (BV g) where
+--   hfoldMap = hbifoldMap . hfoldMap
 
 instance HTraversable (BV g) where
   htraverse = hbitraverseBV pure
@@ -64,7 +64,7 @@ hbimapBV :: (g a -> g' b) -> (f a -> f' b) -> BV g f a -> BV g' f' b
 hbimapBV f g = foldBV (B . f) (F . g)
 
 instance HBifoldableAt k BV where
-  hbifoldAt = foldBV id id
+  hbifoldMap = foldBV
 
 --------------------------------------------------------------------------------
 --  Scopes
@@ -89,7 +89,6 @@ instance HTraversable h => HTraversable (Scope g h) where
 
 
 instance HDuofunctor (Scope g) where
-  hduomap = defaultHduomap
 
 instance HDuotraversable (Scope g) where
   hduotraverse f g = _Scope %%~ f (htraverse (f g))
@@ -174,17 +173,16 @@ instance (HDuotraversable h) => HTraversable (SFree h) where
 
 
 instance HDuofoldableAt k (Scope k) where
-  hduofoldMapAt f = f (hbifoldAt . hsecond (f id)) . view _Scope
+  hduofoldMap f g = f (hbifoldMap id (f g)) . view _Scope
 
 instance (HFunctor h, HFoldableAt k h) => HBifoldableAt k (Scoped h) where
-  hbifoldAt = hfoldMapAt (hbifoldAt . hsecond hfoldAt) . view (_Scoped . _Scope)
+  hbifoldMap f g = hfoldMap (hbifoldMap g (hfoldMap f)) . view (_Scoped . _Scope)
 
 instance (HDuofunctor h, HDuofoldableAt k h) => HFoldableAt k (SFree h) where
-  hfoldAt = \case
-    SPure x -> x
+  hfoldMap f = \case
+    SPure x -> f x
     SWrap x ->
-      hduofoldMapAt (\g -> hduofoldMapAt (\h -> hfoldAt . hmap h) .
-                           view _Scoped .
-                           hsecond g) .
-      hduomapSecond hfoldAt $
+      hduofoldMap
+      (\g -> hduofoldMap hfoldMap f . view _Scoped . hsecond g)
+      (hfoldMap f)
       x

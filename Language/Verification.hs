@@ -25,6 +25,7 @@ module Language.Verification
   -- * Verifier actions
   , evalProp
   , evalProp'
+  , evalPropSimple
 
   -- * Miscellaneous combinators
   , subVar

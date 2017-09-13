@@ -1,20 +1,21 @@
+{-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveDataTypeable   #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Language.Expression where
 
+import           Control.Monad         ((<=<))
 import           Data.Data
-import           Control.Monad ((<=<))
 
 import           Data.Functor.Const
 import           Data.Functor.Identity
+import           Data.Functor.Compose
 
 infixr 1 ^>>=
 
@@ -24,6 +25,9 @@ infixr 1 ^>>=
 
 class HFunctor h where
   hmap :: (forall b. t b -> t' b) -> h t a -> h t' a
+
+  default hmap :: (HTraversable h) => (forall b. t b -> t' b) -> h t a -> h t' a
+  hmap f = runIdentity . htraverse (Identity . f)
 
 class HPointed h where
   hpure :: t a -> h t a
@@ -50,22 +54,46 @@ hjoin x = x ^>>= id
 --  Foldable / Traversable
 --------------------------------------------------------------------------------
 
-class HFoldableAt t h where
-  hfoldAt :: h t a -> t a
+class HFoldableAt k h where
+  hfoldMap :: (forall b. t b -> k b) -> h t a -> k a
 
-hfoldTraverseAt
+
+-- | A helper function for implementing instances with the general form @'Monad'
+-- m => 'HFoldableAt' ('Compose' m t) h@. I.e. folding that requires a monadic
+-- context of some kind.
+implHfoldMapCompose
+  :: (HTraversable h, Monad m)
+  => (h k a -> m (k a))
+  -> (forall b. t b -> Compose m k b) -> h t a -> Compose m k a
+implHfoldMapCompose f g = Compose . (>>= f) . htraverse (getCompose . g)
+
+implHfoldMap
+  :: (HFunctor h)
+  => (h k a -> k a)
+  -> (forall b. t b -> k b) -> h t a -> k a
+implHfoldMap g f = g . hmap f
+
+
+hfold :: HFoldableAt t h => h t a -> t a
+hfold = hfoldMap id
+
+
+-- | Fold in an applicative context.
+hfoldA :: (HFoldableAt (Compose f t) h, Applicative f) => h t a -> f (t a)
+hfoldA = hfoldMapA pure
+
+
+-- | Fold in an applicative context.
+hfoldMapA :: (HFoldableAt (Compose f k) h, Applicative f) => (forall b. t b -> f (k b)) -> h t a -> f (k a)
+hfoldMapA f = getCompose . hfoldMap (Compose . f)
+
+
+hfoldTraverse
   :: (HFoldableAt k h, HTraversable h, Applicative f)
   => (forall b. t b -> f (k b))
   -> h t a
   -> f (k a)
-hfoldTraverseAt f = fmap hfoldAt . htraverse f
-
-hfoldMapAt
-  :: (HFoldableAt k h, HFunctor h)
-  => (forall b. t b -> k b)
-  -> h t a
-  -> k a
-hfoldMapAt f = hfoldAt . hmap f
+hfoldTraverse f = fmap hfold . htraverse f
 
 
 class (HFunctor h) => HTraversable h where
@@ -73,11 +101,8 @@ class (HFunctor h) => HTraversable h where
     :: (Applicative f)
     => (forall b. t b -> f (t' b)) -> h t a -> f (h t' a)
 
-hfoldMap :: (HTraversable h, Monoid m) => (forall b. t b -> m) -> h t a -> m
-hfoldMap f = getConst . htraverse (Const . f)
-
-hliftT :: (HTraversable h) => (forall b. t b -> t' b) -> h t a -> h t' a
-hliftT f = runIdentity . htraverse (Identity . f)
+hfoldMapMonoid :: (HTraversable h, Monoid m) => (forall b. t b -> m) -> h t a -> m
+hfoldMapMonoid f = getConst . htraverse (Const . f)
 
 hbindTraverse
   :: (HTraversable h, HMonad h, Applicative f)
@@ -91,7 +116,7 @@ hbindTraverse f = fmap hjoin . htraverse f
 --------------------------------------------------------------------------------
 
 class HBifunctor h where
-  {-# MINIMAL hbimap | hfirst, hsecond #-}
+  {-# MINIMAL hbimap #-}
 
   hbimap :: (forall b. s b -> s' b)
          -> (forall b. t b -> t' b)
@@ -100,13 +125,23 @@ class HBifunctor h where
   hfirst :: (forall b. s b -> s' b) -> h s t a -> h s' t a
   hsecond :: (forall b. t b -> t' b) -> h s t a -> h s t' a
 
-  hbimap f g = hfirst f . hsecond g
+  default hbimap
+    :: (HBitraversable h)
+    => (forall b. s b -> s' b)
+    -> (forall b. t b -> t' b)
+    -> h s t a
+    -> h s' t' a
+  hbimap f g = runIdentity . hbitraverse (Identity . f) (Identity . g)
+
   hfirst f = hbimap f id
   hsecond = hbimap id
 
 
 class HBifoldableAt k h where
-  hbifoldAt :: h k k a -> k a
+  hbifoldMap :: (forall b. f b -> k b) -> (forall b. g b -> k b) -> h f g a -> k a
+
+hbifold :: (HBifoldableAt k h) => h k k a -> k a
+hbifold = hbifoldMap id id
 
 
 class (HBifunctor h) => HBitraversable h where
@@ -116,16 +151,8 @@ class (HBifunctor h) => HBitraversable h where
     -> (forall b. t b -> f (t' b))
     -> h s t a -> f (h s' t' a)
 
-defaultHbifoldMap :: (Monoid m, HBitraversable h) => (forall b. s b -> m) -> (forall b. t b -> m) -> h s t a -> m
-defaultHbifoldMap f g = getConst . hbitraverse (Const . f) (Const . g)
-
-defaultHbimap
-  :: (HBitraversable h)
-  => (forall b. s b -> s' b)
-  -> (forall b. t b -> t' b)
-  -> h s t a
-  -> h s' t' a
-defaultHbimap f g = runIdentity . hbitraverse (Identity . f) (Identity . g)
+-- hbifoldMap :: (Monoid m, HBitraversable h) => (forall b. s b -> m) -> (forall b. t b -> m) -> h s t a -> m
+-- hbifoldMap f g = getConst . hbitraverse (Const . f) (Const . g)
 
 --------------------------------------------------------------------------------
 --  (Even) Higher-Order Binary Classes
@@ -137,6 +164,16 @@ class HDuofunctor h where
     -> (forall b. t b -> t' b)
     -> h s t a
     -> h s' t' a
+
+  default hduomap
+    :: (HDuotraversable h)
+    => (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
+    -> (forall b. t b -> t' b)
+    -> h s t a
+    -> h s' t' a
+  hduomap f g =
+    runIdentity .
+    hduotraverse (\h -> Identity . f (runIdentity . h)) (Identity . g)
 
 hduomapFirst
   :: HDuofunctor h
@@ -157,7 +194,11 @@ hduomapSecond = hduomap hmap
 
 
 class HDuofoldableAt k h where
-  hduofoldMapAt :: (forall g b. (forall c. g c -> k c) -> s g b -> k b) -> h s k a -> k a
+  hduofoldMap
+    :: (forall g b. (forall c. g c -> k c) -> s g b -> k b)
+    -> (forall b. t b -> k b)
+    -> h s t a
+    -> k a
 
 
 class HDuofunctor h => HDuotraversable h where
@@ -167,16 +208,6 @@ class HDuofunctor h => HDuotraversable h where
     -> (forall b. t b -> f (t' b))
     -> h s t a
     -> f (h s' t' a)
-
-defaultHduomap
-  :: (HDuotraversable h)
-  => (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
-  -> (forall b. t b -> t' b)
-  -> h s t a
-  -> h s' t' a
-defaultHduomap f g =
-  runIdentity .
-  hduotraverse (\h -> Identity . f (runIdentity . h)) (Identity . g)
 
 hduotraverseFirst
   :: (HDuotraversable h, Applicative f)
@@ -218,9 +249,9 @@ instance HFunctor h => HMonad (HFree h)
 
 
 instance (HFunctor h, HFoldableAt k h) => HFoldableAt k (HFree h) where
-  hfoldAt = \case
-    HPure x -> x
-    HWrap x -> hfoldMapAt hfoldAt x
+  hfoldMap f = \case
+    HPure x -> f x
+    HWrap x -> hfoldMap (hfoldMap f) x
 
 
 instance HTraversable h => HTraversable (HFree h) where
@@ -230,7 +261,6 @@ instance HTraversable h => HTraversable (HFree h) where
 
 
 instance HDuofunctor HFree where
-  hduomap = defaultHduomap
 
 instance HDuotraversable HFree where
   hduotraverse f g = \case
@@ -238,12 +268,12 @@ instance HDuotraversable HFree where
     HWrap x -> HWrap <$> f (hduotraverse f g) x
 
 
-deriving instance
-         (Typeable (HFree h t a), Data (h (HFree h t) a), Data (t a)) =>
-         Data (HFree h t a)
+-- deriving instance
+--          (Typeable (HFree h t a), Data (h (HFree h t) a), Data (t a)) =>
+--          Data (HFree h t a)
 
---------------------------------------------------------------------------------
---  Functors
---------------------------------------------------------------------------------
+-- --------------------------------------------------------------------------------
+-- --  Functors
+-- --------------------------------------------------------------------------------
 
-data Pair f g a = Pair (f a) (g a)
+-- data Pair f g a = Pair (f a) (g a)

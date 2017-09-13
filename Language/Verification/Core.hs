@@ -21,6 +21,7 @@ module Language.Verification.Core where
 
 import           Control.Exception
 import           Data.Typeable            ((:~:) (..), Typeable)
+import           Data.Functor.Compose
 
 import           Control.Lens             hiding ((.>))
 import           Control.Monad.Except
@@ -146,9 +147,24 @@ evalProp
   -> (forall a. VarSym v a -> m (k a))
   -> Prop (expr v) b
   -> m (k b)
-evalProp liftQuery liftVar = hfoldTraverseAt (hfoldTraverseAt (liftVar <=< liftQuery . symbolVar))
+evalProp liftQuery liftVar = hfoldTraverse (hfoldTraverse (liftVar <=< liftQuery . symbolVar))
 
 evalProp'
+  :: ( HMonad expr
+     , HTraversable expr
+     , VerifiableVar v
+     , Exception (VerifierError v)
+     , HFoldableAt (Compose m k) expr
+     , HFoldableAt (Compose m k) LogicOp
+     , Monad m
+     )
+  => (forall a. Query v a -> m a)
+  -> (forall a. VarSym v a -> m (k a))
+  -> Prop (expr v) b
+  -> m (k b)
+evalProp' liftQuery liftVar = hfoldMapA (hfoldMapA (liftVar <=< liftQuery . symbolVar))
+
+evalPropSimple
   :: ( HMonad expr
      , HTraversable expr
      , VerifiableVar v
@@ -158,7 +174,7 @@ evalProp'
      )
   => Prop (expr v) b
   -> Query v (SBV b)
-evalProp' = evalProp id pure
+evalPropSimple = evalProp id pure
 
 --------------------------------------------------------------------------------
 --  Combinators

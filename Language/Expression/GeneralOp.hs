@@ -40,7 +40,6 @@ class PrettyOp op where
   prettysPrecOp :: Pretty1 t => Int -> op as a -> Rec t as -> ShowS
 
 instance HFunctor (GeneralOp op) where
-  hmap = hliftT
 
 instance HTraversable (GeneralOp op) where
   htraverse f = \case
@@ -48,8 +47,8 @@ instance HTraversable (GeneralOp op) where
 
 
 instance (EvalOpAt k op) => HFoldableAt k (GeneralOp op) where
-  hfoldAt = \case
-    Op o args -> evalMany o args
+  hfoldMap f = \case
+    Op o args -> evalMany o (rmap f args)
 
 
 -- instance EqOpMany op => HEq (GeneralOp op) where

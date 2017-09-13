@@ -26,7 +26,7 @@ checkPartialHoare precond postcond cmd =
 
      let bigVC = foldr (*&&) (plit True) vcs
 
-     evalProp' bigVC
+     evalPropSimple bigVC
 
 provePartialHoare
   :: (VerifiableVar (WhileVar l), VarSym (WhileVar l) ~ SBV, VarEnv (WhileVar l) ~ ())

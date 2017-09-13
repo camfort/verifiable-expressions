@@ -76,8 +76,8 @@ instance HFunctor (OpChoice '[]) where
 instance HTraversable (OpChoice '[]) where
   htraverse _ = noOps
 
--- instance EvalOp f t (OpChoice '[]) where
---   evalOp = noOps
+instance HFoldableAt k (OpChoice '[]) where
+  hfoldMap _ = noOps
 
 -- instance HEq (OpChoice '[]) where
 --   liftHEq _ _ _ = noOps
@@ -96,12 +96,12 @@ instance (HTraversable op, HTraversable (OpChoice ops)) =>
     OpThis x -> OpThis <$> htraverse f x
     OpThat x -> OpThat <$> htraverse f x
 
--- instance (EvalOp f t op, EvalOp f t (OpChoice ops)) =>
---   EvalOp f t (OpChoice (op : ops)) where
+instance (HFoldableAt k op, HFoldableAt k (OpChoice ops)) =>
+  HFoldableAt k (OpChoice (op : ops)) where
 
---   evalOp = \case
---     OpThis x -> evalOp x
---     OpThat x -> evalOp x
+  hfoldMap f = \case
+    OpThis x -> hfoldMap f x
+    OpThat x -> hfoldMap f x
 
 -- instance (HEq op, HEq (OpChoice ops)) =>
 --   HEq (OpChoice (op : ops)) where
@@ -196,6 +196,9 @@ instance (HFunctor (OpChoice ops)) => HBind (HFree' ops) where
 
 instance (HFunctor (OpChoice ops)) => HMonad (HFree' ops) where
 
+instance (HFoldableAt k (OpChoice ops), HFunctor (OpChoice ops)) =>
+         HFoldableAt k (HFree' ops) where
+  hfoldMap f (HFree' x) = hfoldMap f x
 
 -- | Squash a composition of expressions over different operators into a
 -- single-layered expression over a choice of the two operators.

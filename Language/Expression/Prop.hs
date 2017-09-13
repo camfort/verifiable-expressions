@@ -105,9 +105,7 @@ data LogicOp t a where
   LogImpl :: t Bool -> t Bool -> LogicOp t Bool
   LogEquiv :: t Bool -> t Bool -> LogicOp t Bool
 
-instance HFunctor LogicOp where
-  hmap = hliftT
-
+instance HFunctor LogicOp
 instance HTraversable LogicOp where
   htraverse f = \case
     LogLit b -> pure $ LogLit b
@@ -118,7 +116,7 @@ instance HTraversable LogicOp where
     LogEquiv x y -> LogEquiv <$> f x <*> f y
 
 instance HFoldableAt Identity LogicOp where
-  hfoldAt = \case
+  hfoldMap = implHfoldMap $ \case
     LogLit b -> pure b
     LogNot x -> not <$> x
     LogAnd x y -> liftA2 (&&) x y
@@ -127,7 +125,7 @@ instance HFoldableAt Identity LogicOp where
     LogEquiv x y -> liftA2 (<=>) x y
 
 instance HFoldableAt SBV LogicOp where
-  hfoldAt = \case
+  hfoldMap = implHfoldMap $ \case
     LogLit b -> fromBool b
     LogNot x -> bnot x
     LogAnd x y -> x &&& y

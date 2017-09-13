@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE DeriveTraversable     #-}
+{-# LANGUAGE DeriveTraversable     #-} 
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -225,7 +225,7 @@ evalWhileExpr
   -> WhileExpr l a -> f a
 evalWhileExpr f
   = fmap runIdentity
-  . hfoldTraverseAt (fmap Identity . f)
+  . hfoldTraverse (fmap Identity . f)
 
 oneStep
   :: (Ord l)

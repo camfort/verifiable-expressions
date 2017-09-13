@@ -32,25 +32,25 @@ infixr 6 .||
 prop ^^^ command = CAnn (PropAnn prop ()) command
 
 (.==) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
-(.==) = EOp ... rcurry (Op OpEq)
+(.==) = HWrap ... rcurry (Op OpEq)
 
 (.<) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
-(.<) = EOp ... rcurry (Op OpLT)
+(.<) = HWrap ... rcurry (Op OpLT)
 
 (.>) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
-(.>) = EOp ... rcurry (Op OpGT)
+(.>) = HWrap ... rcurry (Op OpGT)
 
 (.<=) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
-(.<=) = EOp ... rcurry (Op OpLE)
+(.<=) = HWrap ... rcurry (Op OpLE)
 
 (.>=) :: WhileExpr l AlgReal -> WhileExpr l AlgReal -> WhileExpr l Bool
-(.>=) = EOp ... rcurry (Op OpGE)
+(.>=) = HWrap ... rcurry (Op OpGE)
 
 (.&&) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-(.&&) = EOp ... rcurry (Op OpAnd)
+(.&&) = HWrap ... rcurry (Op OpAnd)
 
 (.||) :: WhileExpr l Bool -> WhileExpr l Bool -> WhileExpr l Bool
-(.||) = EOp ... rcurry (Op OpOr)
+(.||) = HWrap ... rcurry (Op OpOr)
 
 wenot :: WhileExpr l Bool -> WhileExpr l Bool
-wenot = EOp . rcurry (Op OpNot)
+wenot = HWrap . rcurry (Op OpNot)

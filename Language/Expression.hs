@@ -1,539 +1,249 @@
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveTraversable          #-}
-{-# LANGUAGE EmptyCase                  #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveDataTypeable   #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-module Language.Expression
-  (
-  -- * Classes
-    Operator(..)
-  , Substitutive(..)
-  , joinExpression
-  , traverseVars
-  , mapVars
+module Language.Expression where
 
-  , EvalOp(..)
-  , mapEvalOp
-  , evalOp'
-  , HEq(..)
-  , liftLiftEq
+import           Data.Data
+import           Control.Monad ((<=<))
 
-  -- * Expressions
-  , Expr(..)
-  , _EVar
-  , _EOp
-  , Expr'(..)
-  , _EVar'
-  , _EOp'
-  , traverseOperators
-  , mapOperators
-  , squashExpression
-  , eop'
-
-  -- * Operator union
-  , OpChoice(..)
-  , ChooseOp(..)
-  , SubsetOp(..)
-
-  -- * Lifting functors
-  , LiftOp(LiftOp)
-  , liftOp
-  , unliftOp
-
-  -- * Restricted Operators
-  , RestrictOp(..)
-  , unrestrictOp
-
-  -- * Simple Expressions
-  , SimpleExpr(..)
-  , _SVar
-  , _SOp
-  , _SimpleExpr
-  , _SimpleExpr'
-  ) where
-
-import           Data.Data             -- (Typeable, Data, (:~:)(..))
-import           Control.Monad (ap, (>=>))
-
+import           Data.Functor.Const
 import           Data.Functor.Identity
-import           Data.Functor.Compose
-import           Data.Functor.Classes
 
-import           Data.Union
-
-import           Control.Lens hiding (op)
+infixr 1 ^>>=
 
 --------------------------------------------------------------------------------
---  Type Classes
+--  Functor / Monad
 --------------------------------------------------------------------------------
 
--- | The class of operators, i.e. higher-order traversables.
-class Operator op where
-  -- | An operator is a higher order traversable over operands.
-  htraverseOp
+class HFunctor h where
+  hmap :: (forall b. t b -> t' b) -> h t a -> h t' a
+
+class HPointed h where
+  hpure :: t a -> h t a
+
+class HBind h where
+  (^>>=) :: h t a -> (forall b. t b -> h t' b) -> h t' a
+
+-- | NB there's no such thing as 'HApplicative' for a reason. Consider @f :: h t
+-- a -> h t' a -> h (Pair t t') a@, i.e. the higher-order analogue of @liftA2
+-- (,) :: f a -> f b -> f (a, b)@. Unfortunately @f@ can't exist, because
+-- @'Pair'@ pairs up values /of the same type/, and in our constructions, @h@
+-- potentially contains values of many types; @a@ just happens to be the one at
+-- the top level. There's no guarantee that the two structures will have the
+-- same types inside to pair together.
+class (HFunctor h, HPointed h, HBind h) => HMonad h
+
+hliftM :: (HPointed h, HBind h) => (forall b. t b -> t' b) -> h t a -> h t' a
+hliftM f x = x ^>>= hpure . f
+
+hjoin :: (HMonad h) => h (h t) a -> h t a
+hjoin x = x ^>>= id
+
+--------------------------------------------------------------------------------
+--  Foldable / Traversable
+--------------------------------------------------------------------------------
+
+class HFoldableAt t h where
+  hfoldAt :: h t a -> t a
+
+hfoldTraverseAt
+  :: (HFoldableAt k h, HTraversable h, Applicative f)
+  => (forall b. t b -> f (k b))
+  -> h t a
+  -> f (k a)
+hfoldTraverseAt f = fmap hfoldAt . htraverse f
+
+hfoldMapAt
+  :: (HFoldableAt k h, HFunctor h)
+  => (forall b. t b -> k b)
+  -> h t a
+  -> k a
+hfoldMapAt f = hfoldAt . hmap f
+
+
+class (HFunctor h) => HTraversable h where
+  htraverse
     :: (Applicative f)
-    => (forall b. t b -> f (t' b)) -> op t a -> f (op t' a)
+    => (forall b. t b -> f (t' b)) -> h t a -> f (h t' a)
 
-  -- | An operator is a higher order functor over operands.
-  hmapOp :: (forall b. t b -> t' b) -> op t a -> op t' a
-  hmapOp f = runIdentity . htraverseOp (Identity . f)
+hfoldMap :: (HTraversable h, Monoid m) => (forall b. t b -> m) -> h t a -> m
+hfoldMap f = getConst . htraverse (Const . f)
 
--- | The class of expressions which contain variables that can be substituted,
--- i.e. higher-order monads.
-class (Operator expr) => Substitutive expr where
-  -- | Create an expression consisting of just the given variable.
-  --
-  -- This is the higher-order version of 'return'.
-  pureVar :: v a -> expr v a
+hliftT :: (HTraversable h) => (forall b. t b -> t' b) -> h t a -> h t' a
+hliftT f = runIdentity . htraverse (Identity . f)
 
-  -- | Substitute all variables in the expression with a new expression.
-  --
-  -- This is the higher-order version of '(>>=)'.
-  bindVars
+hbindTraverse
+  :: (HTraversable h, HMonad h, Applicative f)
+  => (forall b. t b -> f (h t' b))
+  -> h t a
+  -> f (h t' a)
+hbindTraverse f = fmap hjoin . htraverse f
+
+--------------------------------------------------------------------------------
+--  Binary Classes
+--------------------------------------------------------------------------------
+
+class HBifunctor h where
+  {-# MINIMAL hbimap | hfirst, hsecond #-}
+
+  hbimap :: (forall b. s b -> s' b)
+         -> (forall b. t b -> t' b)
+         -> h s t a
+         -> h s' t' a
+  hfirst :: (forall b. s b -> s' b) -> h s t a -> h s' t a
+  hsecond :: (forall b. t b -> t' b) -> h s t a -> h s t' a
+
+  hbimap f g = hfirst f . hsecond g
+  hfirst f = hbimap f id
+  hsecond = hbimap id
+
+
+class HBifoldableAt k h where
+  hbifoldAt :: h k k a -> k a
+
+
+class (HBifunctor h) => HBitraversable h where
+  hbitraverse
     :: (Applicative f)
-    => (forall b. v b -> f (expr v' b)) -> expr v a -> f (expr v' a)
+    => (forall b. s b -> f (s' b))
+    -> (forall b. t b -> f (t' b))
+    -> h s t a -> f (h s' t' a)
 
-  bindVars' :: (forall b. v b -> expr v' b) -> expr v a -> expr v' a
-  bindVars' f = runIdentity . bindVars (Identity . f)
+defaultHbifoldMap :: (Monoid m, HBitraversable h) => (forall b. s b -> m) -> (forall b. t b -> m) -> h s t a -> m
+defaultHbifoldMap f g = getConst . hbitraverse (Const . f) (Const . g)
 
--- | Monadic join for expressions.
-joinExpression
-  :: (Substitutive expr)
-  => expr (expr v) a -> expr v a
-joinExpression = bindVars' id
-
-
-traverseVars
-  :: (Applicative f, Substitutive expr)
-  => (forall b. v b -> f (v' b)) -> expr v a -> f (expr v' a)
-traverseVars f = bindVars (fmap pureVar . f)
-
-
-mapVars
-  :: (Substitutive expr)
-  => (forall b. v b -> v' b) -> expr v a -> expr v' a
-mapVars f = runIdentity . traverseVars (Identity . f)
-
-
--- | Some operators can be evaluated in particular contexts.
---
--- An instance @'EvalOp' f k op@ means that, in the context @f@, @op@ can be
--- evaluated to create objects in the interpretation @k@.
---
--- @f@ is a context, e.g. applicative or monadic.
---
--- @k@ is something like 'Data.SBV.SBV', i.e. a constructor of concrete data
--- types, rather than a monadic or applicative context.
-class (Operator op) => EvalOp f k op where
-  evalOp :: op k a -> f (k a)
-
-mapEvalOp
-  :: (Monad f, EvalOp f k op)
-  => (forall b. t b -> f (k b)) -> op t a -> f (k a)
-mapEvalOp f = htraverseOp f >=> evalOp
-
--- | A convenience function for when an operator can be evaluated with no
--- context.
-evalOp' :: EvalOp Identity k op => op k a -> k a
-evalOp' = runIdentity . mapEvalOp Identity
-
-class HEq op where
-  liftHEq
-    :: (forall x y. (x -> y -> Bool) -> f x -> g y -> Bool)
-    -> (a -> b -> Bool) -> op f a -> op g b -> Bool
-
-liftLiftEq
-  :: (HEq op, Eq1 t)
-  => (a -> b -> Bool) -> op t a -> op t b -> Bool
-liftLiftEq = liftHEq liftEq
-
-instance (Eq1 f) => HEq (Compose f) where
-  liftHEq le eq (Compose x) (Compose y) = liftEq (le eq) x y
+defaultHbimap
+  :: (HBitraversable h)
+  => (forall b. s b -> s' b)
+  -> (forall b. t b -> t' b)
+  -> h s t a
+  -> h s' t' a
+defaultHbimap f g = runIdentity . hbitraverse (Identity . f) (Identity . g)
 
 --------------------------------------------------------------------------------
---  Operator List Union
+--  (Even) Higher-Order Binary Classes
 --------------------------------------------------------------------------------
 
--- | Form the union of a list of operators. This creates an operator which is a
--- choice from one of its constituents.
---
--- For example, @'OpChoice' '[NumOp, EqOp]@ is an operator that can either
--- represent an arithmetic operation or an equality comparison.
-data OpChoice ops (t :: * -> *) a where
-  OpThis :: op t a -> OpChoice (op : ops) t a
-  OpThat :: OpChoice ops t a -> OpChoice (op : ops) t a
+class HDuofunctor h where
+  hduomap
+    :: (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
+    -> (forall b. t b -> t' b)
+    -> h s t a
+    -> h s' t' a
+
+hduomapFirst
+  :: HDuofunctor h
+  => (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
+  -> h s t a
+  -> h s' t a
+hduomapFirst f = hduomap f id
+
+hduomapFirst'
+  :: (HDuofunctor h, HFunctor s)
+  => (forall g b. s g b -> s' g b) -> h s t a -> h s' t a
+hduomapFirst' f = hduomapFirst (\g -> f . hmap g)
+
+hduomapSecond
+  :: (HDuofunctor h, HFunctor s)
+  => (forall b. t b -> t' b) -> h s t a -> h s t' a
+hduomapSecond = hduomap hmap
+
+
+class HDuofoldableAt k h where
+  hduofoldMapAt :: (forall g b. (forall c. g c -> k c) -> s g b -> k b) -> h s k a -> k a
+
+
+class HDuofunctor h => HDuotraversable h where
+  hduotraverse
+    :: (Applicative f)
+    => (forall g g' b. (forall c. g c -> f (g' c)) -> s g b -> f (s' g' b))
+    -> (forall b. t b -> f (t' b))
+    -> h s t a
+    -> f (h s' t' a)
+
+defaultHduomap
+  :: (HDuotraversable h)
+  => (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
+  -> (forall b. t b -> t' b)
+  -> h s t a
+  -> h s' t' a
+defaultHduomap f g =
+  runIdentity .
+  hduotraverse (\h -> Identity . f (runIdentity . h)) (Identity . g)
+
+hduotraverseFirst
+  :: (HDuotraversable h, Applicative f)
+  => (forall g g' b. (forall c. g c -> f (g' c)) -> s g b -> f (s' g' b))
+  -> h s t a
+  -> f (h s' t a)
+hduotraverseFirst f = hduotraverse f pure
+
+hduotraverseFirst'
+  :: (HDuotraversable h, HTraversable s, Monad f)
+  => (forall g b. s g b -> f (s' g b)) -> h s t a -> f (h s' t a)
+hduotraverseFirst' f = hduotraverseFirst (\g -> f <=< htraverse g)
+
+hduotraverseSecond
+  :: (HDuotraversable h, HTraversable s, Applicative f)
+  => (forall b. t b -> f (t' b)) -> h s t a -> f (h s t' a)
+hduotraverseSecond = hduotraverse htraverse
+
+--------------------------------------------------------------------------------
+--  Free Monads
+--------------------------------------------------------------------------------
+
+data HFree h t a
+  = HPure (t a)
+  | HWrap (h (HFree h t) a)
   deriving (Typeable)
 
-_OpThis :: Prism' (OpChoice (op : ops) t a) (op t a)
-_OpThis = prism' OpThis $ \case
-  OpThis x -> Just x
-  OpThat _ -> Nothing
+instance HFunctor h => HFunctor (HFree h) where
+  hmap = hliftM
 
-_OpThat :: Prism' (OpChoice (op : ops) t a) (OpChoice ops t a)
-_OpThat = prism' OpThat $ \case
-  OpThis _ -> Nothing
-  OpThat x -> Just x
+instance HPointed (HFree h) where
+  hpure = HPure
 
-noOps :: OpChoice '[] t a -> x
-noOps = \case
+instance HFunctor h => HBind (HFree h) where
+  HPure x ^>>= f = f x
+  HWrap x ^>>= f = HWrap (hmap (^>>= f) x)
 
-instance Operator (OpChoice '[]) where
-  htraverseOp _ = noOps
-
-instance EvalOp f t (OpChoice '[]) where
-  evalOp = noOps
-
-instance HEq (OpChoice '[]) where
-  liftHEq _ _ _ = noOps
-
-instance (Operator op, Operator (OpChoice ops)) =>
-  Operator (OpChoice (op : ops)) where
-
-  htraverseOp f = \case
-    OpThis x -> OpThis <$> htraverseOp f x
-    OpThat x -> OpThat <$> htraverseOp f x
-
-instance (EvalOp f t op, EvalOp f t (OpChoice ops)) =>
-  EvalOp f t (OpChoice (op : ops)) where
-
-  evalOp = \case
-    OpThis x -> evalOp x
-    OpThat x -> evalOp x
-
-instance (HEq op, HEq (OpChoice ops)) =>
-  HEq (OpChoice (op : ops)) where
-
-  liftHEq le eq (OpThis x) (OpThis y) = liftHEq le eq x y
-  liftHEq le eq (OpThat x) (OpThat y) = liftHEq le eq x y
-  liftHEq _ _ _ _ = False
+instance HFunctor h => HMonad (HFree h)
 
 
-instance (HEq (OpChoice ops), Eq1 t) => Eq1 (OpChoice ops t) where
-  liftEq = liftLiftEq
-instance (Eq1 (OpChoice ops t), Eq a) => Eq (OpChoice ops t a) where
-  (==) = liftEq (==)
+instance (HFunctor h, HFoldableAt k h) => HFoldableAt k (HFree h) where
+  hfoldAt = \case
+    HPure x -> x
+    HWrap x -> hfoldMapAt hfoldAt x
 
 
-newtype AsOp (t :: * -> *) a op = AsOp (op t a)
-
-makeWrapped ''AsOp
-
-choiceToUnion :: OpChoice ops t a -> Union (AsOp t a) ops
-choiceToUnion = \case
-  OpThis x -> This (AsOp x)
-  OpThat x -> That (choiceToUnion x)
-
-unionToChoice :: Union (AsOp t a) ops -> OpChoice ops t a
-unionToChoice = \case
-  This (AsOp x) -> OpThis x
-  That x -> OpThat (unionToChoice x)
-
-_OpChoice
-  :: Iso (OpChoice ops t a) (OpChoice ops' t' a')
-         (Union (AsOp t a) ops) (Union (AsOp t' a') ops')
-_OpChoice = iso choiceToUnion unionToChoice
+instance HTraversable h => HTraversable (HFree h) where
+  htraverse f = \case
+    HPure x -> HPure <$> f x
+    HWrap x -> HWrap <$> htraverse (htraverse f) x
 
 
--- | This class provides a low-boilerplate way of lifting individual operators
--- into a union, and extracting operators from a union.
-class ChooseOp op ops where
-  -- | Project a single operator from a union which contains it.
-  chooseOp :: Prism' (OpChoice ops t a) (op t a)
+instance HDuofunctor HFree where
+  hduomap = defaultHduomap
 
-instance UElem op ops i => ChooseOp op ops where
-  chooseOp = _OpChoice . uprism . _Wrapped
+instance HDuotraversable HFree where
+  hduotraverse f g = \case
+    HPure x -> HPure <$> g x
+    HWrap x -> HWrap <$> f (hduotraverse f g) x
 
 
-class SubsetOp ops1 ops2 where
-  subsetOp :: Prism' (OpChoice ops2 t a) (OpChoice ops1 t a)
-
-instance USubset ops1 ops2 is => SubsetOp ops1 ops2 where
-  subsetOp = _OpChoice . usubset . from _OpChoice
+deriving instance
+         (Typeable (HFree h t a), Data (h (HFree h t) a), Data (t a)) =>
+         Data (HFree h t a)
 
 --------------------------------------------------------------------------------
---  Lifting simple functors into operators
+--  Functors
 --------------------------------------------------------------------------------
 
-newtype LiftOp f t a = LiftOp { getLiftOp :: Compose f t a }
-  deriving (Typeable, Data, Show, Functor, Applicative, Foldable, Traversable)
-
-unliftOp :: LiftOp f g a -> f (g a)
-unliftOp = getCompose . getLiftOp
-
-liftOp :: f (t a) -> LiftOp f t a
-liftOp = LiftOp . Compose
-
-instance Traversable f => Operator (LiftOp f) where
-  htraverseOp f = fmap liftOp . traverse f . unliftOp
-
-instance (Eq1 f) => HEq (LiftOp f) where
-  liftHEq le eq (LiftOp x) (LiftOp y) = liftHEq le eq x y
-
-instance (Eq1 f, Eq1 t) => Eq1 (LiftOp f t) where liftEq = liftLiftEq
-
-instance (Eq1 f, Eq1 t, Eq a) => Eq (LiftOp f t a) where (==) = liftEq (==)
-
---------------------------------------------------------------------------------
---  Restricted Operators
---------------------------------------------------------------------------------
-
--- | @'RestrictOp' k op@ is an operator that behaves like @op@, but restricts
--- its value types to those types @a@ for which a proof of @k a@ can be given.
---
--- For example, if @k@ is @(':~:') Integer@, then values must be of type
--- 'Integer'.
-data RestrictOp k (op :: (* -> *) -> * -> *) t a = RestrictOp (k a) (op t a)
-
-instance Operator op => Operator (RestrictOp k op) where
-  htraverseOp f (RestrictOp k x) = RestrictOp k <$> htraverseOp f x
-
-instance (Eq1 k, HEq op) => HEq (RestrictOp k op) where
-  liftHEq le eq (RestrictOp x1 x2) (RestrictOp y1 y2) =
-    liftEq eq x1 y1 && liftHEq le eq x2 y2
-
-instance (Eq1 k, Eq1 t, HEq op) => Eq1 (RestrictOp k op t) where
-  liftEq = liftLiftEq
-
-instance (Eq1 k, Eq1 t, HEq op, Eq a) => Eq (RestrictOp k op t a) where
-  (==) = eq1
-
-
-unrestrictOp :: RestrictOp k op t a -> op t a
-unrestrictOp (RestrictOp _ x) = x
-
---------------------------------------------------------------------------------
---  Expressions
---------------------------------------------------------------------------------
-
--- | An expression @'Expr' op v a@ has operations defined by the type @op@,
--- variables in the type @v@ and it represents a value of type @a@.
---
--- This is a higher-order free monad over the @op@ higher-order functor.
-data Expr op v a
-  = EVar (v a)
-  | EOp (op (Expr op v) a)
-  deriving (Typeable)
-
-deriving instance (Data (v a), Data (op (Expr op v) a),
-                   Typeable op, Typeable v, Typeable a) => Data (Expr op v a)
-deriving instance (Show (v a), Show (op (Expr op v) a)) => Show (Expr op v a)
-
-deriving instance (Functor v, Functor (op (Expr op v))) => Functor (Expr op v)
-deriving instance (Foldable v,
-                   Foldable (op (Expr op v))) => Foldable (Expr op v)
-deriving instance (Traversable v,
-                   Traversable (op (Expr op v))) => Traversable (Expr op v)
-
-instance (HEq op) => HEq (Expr op) where
-  liftHEq le eq (EVar x) (EVar y) = le eq x y
-  liftHEq le eq (EOp x) (EOp y) = liftHEq (liftHEq le) eq x y
-  liftHEq _ _ _ _ = False
-
-instance (HEq op, Eq1 v) => Eq1 (Expr op v) where liftEq = liftLiftEq
-instance (HEq op, Eq1 v, Eq a) => Eq (Expr op v a) where (==) = eq1
-
-
--- | Variables in an expression can be substituted.
-instance (Operator op) => Substitutive (Expr op) where
-  pureVar = EVar
-
-  bindVars f = \case
-    EVar x -> f x
-    EOp op -> EOp <$> htraverseOp (bindVars f) op
-
-
--- | It turns out an expression can be treated as an operator. "Variables"
--- become operator argument positions.
-instance (Operator op) => Operator (Expr op) where
-  htraverseOp f = \case
-    EVar x -> EVar <$> f x
-    EOp op -> EOp <$> htraverseOp (htraverseOp f) op
-
-
--- | Expressions can be evaluated whenever the contained operators can be
--- evaluated.
-instance (Monad f, EvalOp f k op) => EvalOp f k (Expr op) where
-  evalOp = \case
-    EVar x -> pure x
-    EOp op -> mapEvalOp evalOp op
-
-
-traverseOperators
-  :: (Monad f, Operator op)
-  => (forall b t. op t b -> f (op' t b)) -> Expr op v a -> f (Expr op' v a)
-traverseOperators f = \case
-  EVar x -> pure (EVar x)
-  EOp op -> do
-    op' <- htraverseOp (traverseOperators f) op
-    EOp <$> f op'
-
-
-mapOperators
-  :: (Operator op)
-  => (forall b t. op t b -> op' t b) -> Expr op v a -> Expr op' v a
-mapOperators f = runIdentity . traverseOperators (Identity . f)
-
---------------------------------------------------------------------------------
---  Expressions over a choice of operators
---------------------------------------------------------------------------------
-
--- | An expression @'Expr'' ops v a@ has operations from the type-level list
--- @ops@, variables in the type @v@ and it represents a value of type @a@.
---
--- Intuitively, it represents an expression which may contain operations from
--- any of the operators in the list @ops@.
-newtype Expr' ops v a = Expr' { getExpr' :: Expr (OpChoice ops) v a }
-  deriving (Typeable)
-
-deriving instance (Data (v a), Data (OpChoice ops (Expr (OpChoice ops) v) a),
-                   Typeable ops, Typeable v, Typeable a) =>
-                  Data (Expr' ops v a)
-
-deriving instance (Functor v, Functor (OpChoice ops (Expr (OpChoice ops) v))) =>
-  Functor (Expr' ops v)
-
-deriving instance (Foldable v,
-                   Foldable (OpChoice ops (Expr (OpChoice ops) v))) =>
-                  Foldable (Expr' ops v)
-
-deriving instance (Traversable v,
-                   Traversable (OpChoice ops (Expr (OpChoice ops) v))) =>
-                  Traversable (Expr' ops v)
-
-instance (HEq (OpChoice ops)) => HEq (Expr' ops) where
-  liftHEq le eq (Expr' x) (Expr' y) = liftHEq le eq x y
-
-instance (Eq1 v, HEq (OpChoice ops)) => Eq1 (Expr' ops v) where
-  liftEq = liftLiftEq
-
-instance (Eq1 v, HEq (OpChoice ops), Eq a) => Eq (Expr' ops v a) where
-  (==) = eq1
-
-
--- TODO: Figure out type roles so these instances can be derived by
--- GeneralizedNewtypeDeriving
-
-instance (Operator (OpChoice ops)) => Operator (Expr' ops) where
-  htraverseOp f = fmap Expr' . htraverseOp f . getExpr'
-
-instance (Operator (OpChoice ops)) => Substitutive (Expr' ops) where
-  pureVar = Expr' . pureVar
-
-  bindVars f = fmap Expr' . bindVars (fmap getExpr' . f) . getExpr'
-
-instance (Monad f, EvalOp f g (OpChoice ops)) => EvalOp f g (Expr' ops) where
-  evalOp = evalOp . getExpr'
-
-
--- | Squash a composition of expressions over different operators into a
--- single-layered expression over a choice of the two operators.
-squashExpression
-  :: (Operator op1,
-      Operator op2,
-      Operator (OpChoice ops),
-      ChooseOp op1 ops,
-      ChooseOp op2 ops)
-  => Expr op1 (Expr op2 v) a -> Expr' ops v a
-squashExpression
-  = Expr'
-  . joinExpression
-  . hmapOp (mapOperators (review chooseOp))
-  . mapOperators (review chooseOp)
-
-eop' :: (Operator op, Operator (OpChoice ops), ChooseOp op ops) => op (Expr' ops v) a -> Expr' ops v a
-eop' = Expr' . EOp . review chooseOp . hmapOp getExpr'
-
---------------------------------------------------------------------------------
---  Simple expressions
---------------------------------------------------------------------------------
-
-data SimpleExpr op a
-  = SVar a
-  | SOp (op (SimpleExpr op a))
-  deriving (Typeable, Functor, Foldable, Traversable)
-
-deriving instance (Typeable op, Typeable a, Data a,
-                   Data (op (SimpleExpr op a))) => Data (SimpleExpr op a)
-
-deriving instance (Show a, Show (op (SimpleExpr op a))) =>
-  Show (SimpleExpr op a)
-
-instance HEq SimpleExpr where
-  liftHEq _ eq (SVar x) (SVar y) = eq x y
-  liftHEq le eq (SOp x) (SOp y) = le (liftHEq le eq) x y
-  liftHEq _ _ _ _ = False
-
-instance (Eq1 op) => Eq1 (SimpleExpr op) where liftEq = liftLiftEq
-
-instance (Eq1 op, Eq a) => Eq (SimpleExpr op a) where (==) = eq1
-
-
-instance Functor op => Applicative (SimpleExpr op) where
-  pure = return
-  (<*>) = ap
-
-instance Functor op => Monad (SimpleExpr op) where
-  return = SVar
-
-  e >>= f = case e of
-    SVar x -> f x
-    SOp x -> SOp ((>>= f) <$> x)
-
---------------------------------------------------------------------------------
---  Lenses
---------------------------------------------------------------------------------
-
-_SimpleExpr
-  :: Functor op
-  => Iso (Expr (LiftOp op) v a) (Expr (LiftOp op) v b)
-         (SimpleExpr op (v a)) (SimpleExpr op (v b))
-_SimpleExpr = iso toSimpleExpr fromSimpleExpr
-  where
-    toSimpleExpr = \case
-      EVar x -> SVar x
-      EOp (LiftOp (Compose x)) -> SOp (toSimpleExpr <$> x)
-
-    fromSimpleExpr = \case
-      SVar x -> EVar x
-      SOp x -> EOp (liftOp (fromSimpleExpr <$> x))
-
-
-_SimpleExpr'
-  :: Functor op
-  => Iso (Expr (RestrictOp ((:~:) a) (LiftOp op)) v a)
-         (Expr (RestrictOp ((:~:) b) (LiftOp op)) v' b)
-         (SimpleExpr op (v a)) (SimpleExpr op (v' b))
-_SimpleExpr' = iso toSimpleExpr fromSimpleExpr
-  where
-    toSimpleExpr = \case
-      EVar x -> SVar x
-      EOp (RestrictOp _ (LiftOp (Compose x))) -> SOp (toSimpleExpr <$> x)
-
-    fromSimpleExpr = \case
-      SVar x -> EVar x
-      SOp x -> EOp (RestrictOp Refl $ liftOp (fromSimpleExpr <$> x))
-
-makePrisms ''Expr
-makeWrapped ''Expr'
-makePrisms ''SimpleExpr
-
-_EOp' :: Prism' (Expr' ops v a) (OpChoice ops (Expr (OpChoice ops) v) a)
-_EOp' = _Wrapped . _EOp
-
-_EVar' :: Prism' (Expr' ops v a) (v a)
-_EVar' = _Wrapped . _EVar
+data Pair f g a = Pair (f a) (g a)

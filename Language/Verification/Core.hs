@@ -134,30 +134,31 @@ query (Query action) env = do
 --------------------------------------------------------------------------------
 
 evalProp
-  :: ( Substitutive expr
+  :: ( HMonad expr
+     , HTraversable expr
      , VerifiableVar v
      , Exception (VerifierError v)
-     , EvalOp m k expr
-     , EvalOp m k LogicOp
+     , HFoldableAt k expr
+     , HFoldableAt k LogicOp
      , Monad m
      )
   => (forall a. Query v a -> m a)
-  -> (forall a. VarSym v a -> k a)
+  -> (forall a. VarSym v a -> m (k a))
   -> Prop (expr v) b
   -> m (k b)
-evalProp liftQuery liftVar =
-  mapEvalOp (mapEvalOp (liftQuery . fmap liftVar . symbolVar))
+evalProp liftQuery liftVar = hfoldTraverseAt (hfoldTraverseAt (liftVar <=< liftQuery . symbolVar))
 
 evalProp'
-  :: ( Substitutive expr
+  :: ( HMonad expr
+     , HTraversable expr
      , VerifiableVar v
      , Exception (VerifierError v)
-     , EvalOp (Query v) SBV expr
+     , HFoldableAt SBV expr
      , VarSym v ~ SBV
      )
   => Prop (expr v) b
   -> Query v (SBV b)
-evalProp' = evalProp id id
+evalProp' = evalProp id pure
 
 --------------------------------------------------------------------------------
 --  Combinators
@@ -169,7 +170,7 @@ evalProp' = evalProp id id
 -- This is substitution into an expression, where the old expression is just a
 -- variable.
 subVar
-  :: (Substitutive expr, VerifiableVar v, Eq (VarKey v))
+  :: (HPointed expr, VerifiableVar v, Eq (VarKey v))
   => expr v a
   -> v a
   -> v b
@@ -179,7 +180,7 @@ subVar newExpr targetVar thisVar =
       thisName = varKey thisVar
   in case eqVarTypes thisVar targetVar of
        Just Refl | thisName == targetName -> newExpr
-       _         -> pureVar thisVar
+       _         -> hpure thisVar
 
 --------------------------------------------------------------------------------
 --  Internal Functions

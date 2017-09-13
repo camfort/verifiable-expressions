@@ -45,60 +45,59 @@ data WhileOpKind as r where
   OpNot                        :: WhileOpKind '[Bool]             Bool
 
 
-instance (Applicative f) =>
-  EvalOpMany f Identity WhileOpKind where
+instance EvalOpAt Identity WhileOpKind where
 
   evalMany = \case
-    OpLit x -> \_ -> pure (pure x)
+    OpLit x -> \_ -> pure x
 
-    OpAdd -> pure . runcurryA (+)
-    OpSub -> pure . runcurryA (-)
-    OpMul -> pure . runcurryA (*)
+    OpAdd -> runcurryA (+)
+    OpSub -> runcurryA (-)
+    OpMul -> runcurryA (*)
 
-    OpEq -> pure . runcurryA (==)
-    OpLT -> pure . runcurryA (<)
-    OpLE -> pure . runcurryA (<=)
-    OpGT -> pure . runcurryA (>)
-    OpGE -> pure . runcurryA (>=)
+    OpEq -> runcurryA (==)
+    OpLT -> runcurryA (<)
+    OpLE -> runcurryA (<=)
+    OpGT -> runcurryA (>)
+    OpGE -> runcurryA (>=)
 
-    OpAnd -> pure . runcurryA (&&)
-    OpOr -> pure . runcurryA (||)
+    OpAnd -> runcurryA (&&)
+    OpOr -> runcurryA (||)
 
-    OpNot -> pure . runcurryA not
+    OpNot -> runcurryA not
 
-instance (Applicative f) => EvalOpMany f SBV WhileOpKind where
+instance EvalOpAt SBV WhileOpKind where
   evalMany = \case
-    OpLit x -> \_ -> pure (literal x)
+    OpLit x -> \_ -> literal x
 
-    OpAdd -> pure . runcurry (+)
-    OpSub -> pure . runcurry (-)
-    OpMul -> pure . runcurry (*)
+    OpAdd -> runcurry (+)
+    OpSub -> runcurry (-)
+    OpMul -> runcurry (*)
 
-    OpEq -> pure . runcurry (.==)
-    OpLT -> pure . runcurry (.<)
-    OpLE -> pure . runcurry (.<=)
-    OpGT -> pure . runcurry (.>)
-    OpGE -> pure . runcurry (.>=)
+    OpEq -> runcurry (.==)
+    OpLT -> runcurry (.<)
+    OpLE -> runcurry (.<=)
+    OpGT -> runcurry (.>)
+    OpGE -> runcurry (.>=)
 
-    OpAnd -> pure . runcurry (&&&)
-    OpOr -> pure . runcurry (|||)
+    OpAnd -> runcurry (&&&)
+    OpOr -> runcurry (|||)
 
-    OpNot -> pure . runcurry bnot
+    OpNot -> runcurry bnot
 
-instance EqOpMany WhileOpKind where
-  liftEqMany (OpLit x) (OpLit y) _ = \_ _ -> x == y
-  liftEqMany OpAdd OpAdd k = k
-  liftEqMany OpSub OpSub k = k
-  liftEqMany OpMul OpMul k = k
-  liftEqMany OpEq  OpEq  k = k
-  liftEqMany OpLT  OpLT  k = k
-  liftEqMany OpLE  OpLE  k = k
-  liftEqMany OpGT  OpGT  k = k
-  liftEqMany OpGE  OpGE  k = k
-  liftEqMany OpAnd OpAnd k = k
-  liftEqMany OpOr  OpOr  k = k
-  liftEqMany OpNot OpNot k = k
-  liftEqMany _ _ _ = \_ _ -> False
+-- instance EqOpMany WhileOpKind where
+--   liftEqMany (OpLit x) (OpLit y) _ = \_ _ -> x == y
+--   liftEqMany OpAdd OpAdd k = k
+--   liftEqMany OpSub OpSub k = k
+--   liftEqMany OpMul OpMul k = k
+--   liftEqMany OpEq  OpEq  k = k
+--   liftEqMany OpLT  OpLT  k = k
+--   liftEqMany OpLE  OpLE  k = k
+--   liftEqMany OpGT  OpGT  k = k
+--   liftEqMany OpGE  OpGE  k = k
+--   liftEqMany OpAnd OpAnd k = k
+--   liftEqMany OpOr  OpOr  k = k
+--   liftEqMany OpNot OpNot k = k
+--   liftEqMany _ _ _ = \_ _ -> False
 
 prettys1Binop ::
   (Pretty1 t) =>
@@ -108,8 +107,8 @@ prettys1Binop prec opStr = \p x y ->
                        . showString opStr
                        . prettys1Prec (prec + 1) y
 
-instance PrettyOpMany WhileOpKind where
-  prettysPrecMany = flip $ \case
+instance PrettyOp WhileOpKind where
+  prettysPrecOp = flip $ \case
     OpAdd -> runcurry . prettys1Binop 5 " + "
     OpSub -> runcurry . prettys1Binop 5 " - "
     OpMul -> runcurry . prettys1Binop 6 " * "
@@ -159,19 +158,19 @@ instance VerifiableVar (WhileVar String) where
 --  Expressions
 --------------------------------------------------------------------------------
 
-type WhileExpr l = Expr WhileOp (WhileVar l)
+type WhileExpr l = HFree WhileOp (WhileVar l)
 
 instance Num (WhileExpr l AlgReal) where
-  fromInteger x = EOp (Op (OpLit (fromInteger x)) RNil)
+  fromInteger x = HWrap (Op (OpLit (fromInteger x)) RNil)
 
-  (+) = EOp ... rcurry (Op OpAdd)
-  (*) = EOp ... rcurry (Op OpMul)
-  (-) = EOp ... rcurry (Op OpSub)
+  (+) = HWrap ... rcurry (Op OpAdd)
+  (*) = HWrap ... rcurry (Op OpMul)
+  (-) = HWrap ... rcurry (Op OpSub)
   abs = error "can't take abs of expressions"
   signum = error "can't take signum of expressions"
 
 instance IsString s => IsString (WhileExpr s AlgReal) where
-  fromString = EVar . WhileVar . fromString
+  fromString = HPure . WhileVar . fromString
 
 --------------------------------------------------------------------------------
 --  Commands
@@ -221,12 +220,12 @@ data StepResult a
   deriving (Functor)
 
 evalWhileExpr
-  :: (Monad m)
-  => (forall x. WhileVar l x -> m x)
-  -> WhileExpr l a -> m a
+  :: (Applicative f)
+  => (forall x. WhileVar l x -> f x)
+  -> WhileExpr l a -> f a
 evalWhileExpr f
   = fmap runIdentity
-  . mapEvalOp (fmap Identity . f)
+  . hfoldTraverseAt (fmap Identity . f)
 
 oneStep
   :: (Ord l)

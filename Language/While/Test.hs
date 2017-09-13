@@ -34,7 +34,7 @@ testPostcond =
 testConfig :: SMTConfig
 testConfig = defaultSMTCfg { verbose = False }
 
-testVcs :: Maybe [VProp String Bool]
+testVcs :: Maybe [WhileProp String Bool]
 testVcs = generateVCs testPrecond testPostcond testCommandAnn
 
 test :: IO (Either (VerifierError (WhileVar String)) Bool)

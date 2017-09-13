@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DeriveTraversable     #-}
@@ -101,15 +102,15 @@ instance (Pretty2 expr, Pretty1 var, Pretty cmd) => Pretty (AnnSeq expr var cmd)
 -- | Substitutes variables in the given proposition based on the given
 -- assignment.
 subAssignment
-  :: (Substitutive expr, VerifiableVar v)
+  :: (HMonad expr, VerifiableVar v)
   => Assignment expr v -> Prop (expr v) a -> Prop (expr v) a
-subAssignment (Assignment targetVar newExpr) = hmapOp (bindVars' (subVar newExpr targetVar))
+subAssignment (Assignment targetVar newExpr) = hmap (^>>= subVar newExpr targetVar)
 
 
 -- | Chains substitutions, substituting using each assignment in the given list
 -- in turn.
 chainSub
-  :: (Substitutive expr, VerifiableVar v)
+  :: (HMonad expr, VerifiableVar v)
   => Prop (expr v) Bool -> [Assignment expr v] -> Prop (expr v) Bool
 chainSub prop []       = prop
 chainSub prop (a : as) = subAssignment a (chainSub prop as)
@@ -160,14 +161,14 @@ type Triplet expr var a = (Prop (expr var) Bool, Prop (expr var) Bool, a)
 
 -- | Generates verification conditions for a skip statement.
 skipVCs
-  :: (Substitutive expr, MonadGenVCs expr var m)
+  :: (HMonad expr, MonadGenVCs expr var m)
   => Triplet expr var () -> m ()
 skipVCs (precond, postcond, ()) = tell [precond *-> postcond]
 
 
 -- | Generates verification conditions for an assignment.
 assignVCs
-  :: (Substitutive expr, MonadGenVCs expr v m, VerifiableVar v)
+  :: (HMonad expr, MonadGenVCs expr v m, VerifiableVar v)
   => Triplet expr v (Assignment expr v) -> m ()
 assignVCs (precond, postcond, assignment) = do
   let postcond' = subAssignment assignment postcond
@@ -176,7 +177,7 @@ assignVCs (precond, postcond, assignment) = do
 
 -- | Generates verification conditions for a sequence of commands.
 sequenceVCs
-  :: (Substitutive expr, MonadGenVCs expr v m, VerifiableVar v)
+  :: (HMonad expr, MonadGenVCs expr v m, VerifiableVar v)
   => (Triplet expr v cmd -> m a)
   -> Triplet expr v (AnnSeq expr v cmd) -> m [a]
 sequenceVCs cmdVCs (precond, postcond, annSeq) =
@@ -203,7 +204,7 @@ sequenceVCs cmdVCs (precond, postcond, annSeq) =
 
 -- | Generates verification conditions for a two-branch if command.
 ifVCs
-  :: (Substitutive expr, MonadGenVCs expr v m)
+  :: (HMonad expr, MonadGenVCs expr v m)
   => (Triplet expr v cmd -> m a)
   -> (cond -> Prop (expr v) Bool)
   -> Triplet expr v (cond, cmd, cmd) -> m (a, a)
@@ -216,7 +217,7 @@ ifVCs cmdVCs condToProp (precond, postcond, (cond, cmd1, cmd2)) = do
 -- | Generates verification conditions for a multi-branch if-then-else-...
 -- command.
 multiIfVCs
-  :: (Substitutive expr, Monad m)
+  :: (HMonad expr, Monad m)
   => (Triplet expr v cmd -> m ())
   -> (cond -> Prop (expr v) Bool)
   -> Triplet expr v [(Maybe cond, cmd)] -> m ()
@@ -235,7 +236,7 @@ multiIfVCs cmdVCs condToProp (precond, postcond, branches) = go precond branches
 
 -- | Generates verification conditions for a while loop.
 whileVCs
-  :: (Substitutive expr, MonadGenVCs expr v m)
+  :: (HMonad expr, MonadGenVCs expr v m)
   => (Triplet expr v cmd -> m ())
   -> (cond -> Prop (expr v) Bool)
   -> Prop (expr v) Bool -- ^ Loop invariant

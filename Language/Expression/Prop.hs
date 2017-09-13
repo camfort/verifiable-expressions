@@ -28,28 +28,29 @@ module Language.Expression.Prop
   , (*<->)
   , propAnd
   , propOr
-    -- * Operator
+    -- * HTraversable
   , LogicOp(..)
   ) where
 
 import           Control.Applicative        (liftA2)
 import           Data.List                  (foldl')
-import           Data.Typeable
+-- import           Data.Typeable
 
-import           Data.Functor.Classes
+-- import           Data.Functor.Classes
 import           Data.Functor.Identity
 
 import           Data.SBV
 
 import           Language.Expression
+import           Language.Expression.Choice
 import           Language.Expression.Pretty
 import           Language.Expression.Util
 
 -- | Propositions over general expressions.
-type Prop = Expr LogicOp
+type Prop = HFree LogicOp
 
 -- | Propositions over expressions with the given list of operators.
-type Prop' ops v = Prop (Expr' ops v)
+type Prop' ops v = Prop (HFree' ops v)
 
 --------------------------------------------------------------------------------
 --  DSL
@@ -62,25 +63,25 @@ infix 1 *<->
 
 -- | Lift an expression into the land of propositions.
 expr :: expr a -> Prop expr a
-expr = EVar
+expr = HPure
 
 plit :: Bool -> Prop expr Bool
-plit = EOp . LogLit
+plit = HWrap . LogLit
 
 pnot :: Prop expr Bool -> Prop expr Bool
-pnot = EOp . LogNot
+pnot = HWrap . LogNot
 
 (*&&) :: Prop expr Bool -> Prop expr Bool -> Prop expr Bool
-(*&&) = EOp ... LogAnd
+(*&&) = HWrap ... LogAnd
 
 (*||) :: Prop expr Bool -> Prop expr Bool -> Prop expr Bool
-(*||) = EOp ... LogOr
+(*||) = HWrap ... LogOr
 
 (*->) :: Prop expr Bool -> Prop expr Bool -> Prop expr Bool
-(*->) = EOp ... LogImpl
+(*->) = HWrap ... LogImpl
 
 (*<->) :: Prop expr Bool -> Prop expr Bool -> Prop expr Bool
-(*<->) = EOp ... LogEquiv
+(*<->) = HWrap ... LogEquiv
 
 propAnd :: [Prop expr Bool] -> Prop expr Bool
 propAnd []       = plit True
@@ -92,7 +93,7 @@ propOr (x : xs) = foldl' (*||) x xs
 
 
 --------------------------------------------------------------------------------
---  The Operator
+--  The HTraversable
 --------------------------------------------------------------------------------
 
 -- | Logical operations
@@ -104,8 +105,11 @@ data LogicOp t a where
   LogImpl :: t Bool -> t Bool -> LogicOp t Bool
   LogEquiv :: t Bool -> t Bool -> LogicOp t Bool
 
-instance Operator LogicOp where
-  htraverseOp f = \case
+instance HFunctor LogicOp where
+  hmap = hliftT
+
+instance HTraversable LogicOp where
+  htraverse f = \case
     LogLit b -> pure $ LogLit b
     LogNot x -> LogNot <$> f x
     LogAnd x y -> LogAnd <$> f x <*> f y
@@ -113,36 +117,36 @@ instance Operator LogicOp where
     LogImpl x y -> LogImpl <$> f x <*> f y
     LogEquiv x y -> LogEquiv <$> f x <*> f y
 
-instance (Applicative f) => EvalOp f Identity LogicOp where
-  evalOp = \case
-    LogLit b -> pure $ pure b
-    LogNot x -> pure $ not <$> x
-    LogAnd x y -> pure $ liftA2 (&&) x y
-    LogOr x y -> pure $ liftA2 (||) x y
-    LogImpl x y -> pure $ liftA2 (==>) x y
-    LogEquiv x y -> pure $ liftA2 (<=>) x y
+instance HFoldableAt Identity LogicOp where
+  hfoldAt = \case
+    LogLit b -> pure b
+    LogNot x -> not <$> x
+    LogAnd x y -> liftA2 (&&) x y
+    LogOr x y -> liftA2 (||) x y
+    LogImpl x y -> liftA2 (==>) x y
+    LogEquiv x y -> liftA2 (<=>) x y
 
-instance (Applicative f) => EvalOp f SBV LogicOp where
-  evalOp = \case
-    LogLit b -> pure (fromBool b)
-    LogNot x -> pure $ bnot x
-    LogAnd x y -> pure $ x &&& y
-    LogOr x y -> pure $ x ||| y
-    LogImpl x y -> pure $ x ==> y
-    LogEquiv x y -> pure $ x <=> y
+instance HFoldableAt SBV LogicOp where
+  hfoldAt = \case
+    LogLit b -> fromBool b
+    LogNot x -> bnot x
+    LogAnd x y -> x &&& y
+    LogOr x y -> x ||| y
+    LogImpl x y -> x ==> y
+    LogEquiv x y -> x <=> y
 
-instance HEq LogicOp where
-  liftHEq _ _ (LogLit x) (LogLit y) = x == y
-  liftHEq le _ (LogNot x) (LogNot y) = le svEq x y
-  liftHEq le _ (LogAnd x1 x2) (LogAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHEq le _ (LogOr x1 x2) (LogOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHEq le _ (LogImpl x1 x2) (LogImpl y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHEq le _ (LogEquiv x1 x2) (LogEquiv y1 y2) = le svEq x1 y1 && le svEq x2 y2
-  liftHEq _ _ _ _ = False
+-- instance HEq LogicOp where
+--   liftHEq _ _ (LogLit x) (LogLit y) = x == y
+--   liftHEq le _ (LogNot x) (LogNot y) = le svEq x y
+--   liftHEq le _ (LogAnd x1 x2) (LogAnd y1 y2) = le svEq x1 y1 && le svEq x2 y2
+--   liftHEq le _ (LogOr x1 x2) (LogOr y1 y2) = le svEq x1 y1 && le svEq x2 y2
+--   liftHEq le _ (LogImpl x1 x2) (LogImpl y1 y2) = le svEq x1 y1 && le svEq x2 y2
+--   liftHEq le _ (LogEquiv x1 x2) (LogEquiv y1 y2) = le svEq x1 y1 && le svEq x2 y2
+--   liftHEq _ _ _ _ = False
 
-instance (Eq1 t) => Eq1 (LogicOp t) where liftEq = liftLiftEq
+-- instance (Eq1 t) => Eq1 (LogicOp t) where liftEq = liftLiftEq
 
-instance (Eq a, Eq1 t) => Eq (LogicOp t a) where (==) = eq1
+-- instance (Eq a, Eq1 t) => Eq (LogicOp t a) where (==) = eq1
 
 instance Pretty2 LogicOp where
   prettys2Prec p = \case
@@ -162,7 +166,7 @@ instance Pretty2 LogicOp where
 --  Internal Combinators
 --------------------------------------------------------------------------------
 
-svEq :: (Typeable a, Typeable b, Eq a) => a -> b -> Bool
-svEq (x :: a) (y :: b)
-  | Just Refl <- eqT :: Maybe (a :~: b) = x == y
-  | otherwise = False
+-- svEq :: (Typeable a, Typeable b, Eq a) => a -> b -> Bool
+-- svEq (x :: a) (y :: b)
+--   | Just Refl <- eqT :: Maybe (a :~: b) = x == y
+--   | otherwise = False

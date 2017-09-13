@@ -30,10 +30,12 @@ module Language.Expression.Pretty
   ) where
 
 import           Data.Functor.Const
-import           Data.List           (intersperse)
-import           Data.Monoid         (Endo (..))
+import           Data.List                  (intersperse)
+import           Data.Monoid                (Endo (..))
 
 import           Language.Expression
+import           Language.Expression.Choice
+import           Language.Expression.Scope
 
 --------------------------------------------------------------------------------
 --  Convenience
@@ -50,9 +52,12 @@ prettys1PrecUnop :: Pretty1 t => Int -> String -> Int -> t a -> ShowS
 prettys1PrecUnop opPrec opStr p x =
   showParen (p > opPrec) $ showString opStr . prettys1Prec (opPrec + 1) x
 
-prettys1PrecBinop :: (Pretty1 f, Pretty1 g) => Int -> String -> Int -> f a -> g b -> ShowS
+prettys1PrecBinop
+  :: (Pretty1 f, Pretty1 g)
+  => Int -> String -> Int -> f a -> g b -> ShowS
 prettys1PrecBinop opPrec opStr p x y =
-  showParen (p > opPrec) $ prettys1Prec (opPrec + 1) x . showString opStr . prettys1Prec (opPrec + 1) y
+  showParen (p > opPrec) $
+  prettys1Prec (opPrec + 1) x . showString opStr . prettys1Prec (opPrec + 1) y
 
 --------------------------------------------------------------------------------
 --  Pretty typeclasses
@@ -67,6 +72,9 @@ prettys1 = prettys1Prec 0
 prettys2 :: (Pretty2 op, Pretty1 t) => op t a -> ShowS
 prettys2 = prettys2Prec 0
 
+prettys3 :: (Pretty3 h, Pretty2 s, Pretty1 t) => h s t a -> ShowS
+prettys3 = prettys3Prec 0
+
 class Pretty a where
   {-# MINIMAL pretty | prettysPrec #-}
 
@@ -76,7 +84,7 @@ class Pretty a where
   pretty x = prettys x ""
   prettysPrec _ x s = pretty x ++ s
 
-class Pretty1 (t :: k -> *) where
+class Pretty1 t where
   {-# MINIMAL pretty1 | prettys1Prec #-}
 
   pretty1 :: t a -> String
@@ -85,7 +93,7 @@ class Pretty1 (t :: k -> *) where
   prettys1Prec :: Int -> t a -> ShowS
   prettys1Prec _ x s = pretty1 x ++ s
 
-class Pretty2 (op :: (k -> *) -> k -> *) where
+class Pretty2 op where
   {-# MINIMAL pretty2 | prettys2Prec #-}
 
   pretty2 :: (Pretty1 t) => op t a -> String
@@ -93,6 +101,15 @@ class Pretty2 (op :: (k -> *) -> k -> *) where
 
   prettys2Prec :: (Pretty1 t) => Int -> op t a -> ShowS
   prettys2Prec _ x s = pretty2 x ++ s
+
+class Pretty3 h where
+  {-# MINIMAL pretty3 | prettys3Prec #-}
+
+  pretty3 :: (Pretty2 s, Pretty1 t) => h s t a -> String
+  pretty3 x = prettys3 x ""
+
+  prettys3Prec :: (Pretty2 s, Pretty1 t) => Int -> h s t a -> ShowS
+  prettys3Prec _ x s = pretty3 x ++ s
 
 --------------------------------------------------------------------------------
 --  Combinatory instances
@@ -104,24 +121,42 @@ instance {-# OVERLAPPABLE #-} (Pretty1 t) => Pretty (t a) where
 instance {-# OVERLAPPABLE #-} (Pretty2 f, Pretty1 t) => Pretty1 (f t) where
   prettys1Prec = prettys2Prec
 
+instance {-# OVERLAPPABLE #-} (Pretty3 h, Pretty2 s) => Pretty2 (h s) where
+  prettys2Prec = prettys3Prec
+
 instance Pretty1 (Const String) where
   pretty1 (Const x) = x
 
-instance (Pretty2 op, Operator op) => Pretty2 (Expr op) where
+instance (Pretty2 op) => Pretty2 (HFree op) where
   prettys2Prec p = \case
-    EVar x -> prettys1Prec p x
-    EOp op -> prettys2Prec p op
+    HPure x -> prettys1Prec p x
+    HWrap op -> prettys2Prec p op
 
-instance (Pretty2 (OpChoice ops), Operator (OpChoice ops)) =>
-  Pretty2 (Expr' ops) where
+instance (Pretty1 t) => Pretty2 (BV t) where
+  prettys2Prec p = foldBV (prettys1Prec p) (prettys1Prec p)
 
-  prettys2Prec p = prettys2Prec p . getExpr'
+instance (Pretty2 h, Pretty1 t) => Pretty2 (Scope t h) where
+  prettys2Prec p (Scope x) = prettys2Prec p x
+
+instance (Pretty2 h, Pretty1 t) => Pretty2 (Scoped h t) where
+  prettys2Prec p (Scoped x) = prettys2Prec p x
+
+
+instance (Pretty3 h) => Pretty2 (SFree h) where
+  prettys2Prec p = \case
+    SPure x -> prettys1Prec p x
+    SWrap x -> prettys3Prec p x
+
+
+instance (Pretty2 (OpChoice ops)) => Pretty2 (HFree' ops) where
+  prettys2Prec p = prettys2Prec p . getHFree'
 
 instance (Pretty2 (OpChoice '[])) where
-  pretty2 x = case x of
-    -- absurd
+  pretty2 = noOps
 
-instance (Pretty2 op, Pretty2 (OpChoice ops)) => Pretty2 (OpChoice (op : ops)) where
+
+instance (Pretty2 op, Pretty2 (OpChoice ops)) =>
+         Pretty2 (OpChoice (op : ops)) where
   prettys2Prec p = \case
     OpThis x -> prettys2Prec p x
     OpThat x -> prettys2Prec p x
@@ -136,7 +171,7 @@ instance {-# OVERLAPPING #-} Pretty a => Pretty [a] where
 
 instance {-# OVERLAPPING #-} Pretty a => Pretty (Maybe a) where
   prettysPrec p (Just x) = prettysPrec p x
-  prettysPrec _ Nothing = \r -> "<nothing>" ++ r
+  prettysPrec _ Nothing  = \r -> "<nothing>" ++ r
 
 instance Pretty () where
   pretty = show

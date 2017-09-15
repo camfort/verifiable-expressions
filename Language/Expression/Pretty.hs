@@ -23,6 +23,8 @@ module Language.Expression.Pretty
   , prettys1
   , Pretty2(..)
   , prettys2
+  , Pretty3(..)
+  , prettys3
   -- * Combinators
   , putPretty
   , prettys1PrecBinop

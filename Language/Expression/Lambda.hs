@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE LambdaCase                #-}
@@ -8,8 +9,6 @@
 {-# LANGUAGE TypeOperators             #-}
 
 module Language.Expression.Lambda where
-
-import           Data.Semigroup            (Max (..))
 
 import           Data.Typeable             ((:~:) (..), Typeable, eqT)
 
@@ -22,35 +21,35 @@ data LambdaOp s t a where
   App :: t (a -> b) -> t a -> LambdaOp s t b
 
   -- | Abstracts a scope where bound variables are in the @(':~:') a@ functor,
-  -- meaning they have the same type as @a@. Free variables ignore the argument
-  -- and have type @b@.
+  -- meaning they have the type @a@. Free variables ignore the argument and have
+  -- type @b@.
   Abs :: s ((:~:) a) b -> LambdaOp s t (a -> b)
 
-instance HDuofunctor LambdaOp where
-  hduomap = defaultHduomap
+  Add :: (Num a) => t a -> t a -> LambdaOp s t a
 
+instance HDuofunctor LambdaOp where
 instance HDuotraversable LambdaOp where
   hduotraverse f g = \case
     App x y -> App <$> g x <*> g y
     Abs x -> Abs <$> f pure x
+    Add x y -> Add <$> g x <*> g y
 
-instance HFunctor (LambdaOp s) where
-  hmap f = \case
-    App x y -> App (f x) (f y)
-    Abs x -> Abs x
+instance (HTraversable s) => HFunctor (LambdaOp s) where
 
 instance (HTraversable s) => HTraversable (LambdaOp s) where
   htraverse = hduotraverseSecond
 
 instance HDuofoldableAt Identity LambdaOp where
-  hduofoldMapAt f = \case
-    App (Identity g) (Identity x) -> Identity (g x)
-    Abs y -> Identity (\x -> runIdentity (f (\Refl -> Identity x) y))
+  hduofoldMap g f = \case
+    App h x -> f h <*> f x
+    Abs y -> Identity (\x -> runIdentity (g (\Refl -> Identity x) y))
+    Add x y -> (+) <$> f x <*> f y
 
 
 type LambdaExpr = SFree LambdaOp
 
--- var :: v a -> LambdaExpr
+var' :: v a -> LambdaExpr v a
+var' = SPure
 
 app :: LambdaExpr v (a -> b) -> LambdaExpr v a -> LambdaExpr v b
 app f x = SWrap (App f x)
@@ -65,23 +64,27 @@ data TVar k a where
   TVar :: Typeable a => { tvarKey :: k } -> TVar k a
 
 
-uniqueTVarKey :: (HTraversable h, Ord k, Bounded k, Enum k) => h (TVar k) a -> k
-uniqueTVarKey x =
-  let Max highestUsed = hfoldMap (Max . tvarKey) x
-  in succ highestUsed
-
-
 abstractTVar :: (HMonad h, Typeable a, Eq k) => k -> h (TVar k) b -> Scope ((:~:) a) h (TVar k) b
-abstractTVar nm = abstract (\case TVar nm' | nm == nm' -> eqT
-                                  _ -> Nothing)
+abstractTVar nm = abstract $ \case
+  TVar nm' | nm == nm' -> eqT
+  _ -> Nothing
 
--- abstractTVar'
---   :: (HMonad h, HTraversable h, Typeable a, Ord k, Bounded k, Enum k, Typeable b)
---   => h (TVar k) b -> Scope ((:~:) a) h (TVar k) b
--- abstractTVar' x = abstractTVar (uniqueTVarKey x) x
+lam :: (Eq k, Typeable a, Typeable b) => k -> LambdaExpr (TVar k) b -> LambdaExpr (TVar k) (a -> b)
+lam k x = lam' (abstractTVar k x)
 
--- -- | "Wow! This works?"
--- lam :: (Ord k, Bounded k, Enum k, Typeable a, Typeable b) => (LambdaExpr (TVar k) a -> LambdaExpr (TVar k) b) -> LambdaExpr (TVar k) (a -> b)
--- lam f =
---   let k = uniqueTVarKey
---   -- lam' $ abstractTVar' $ f _
+
+var :: (Typeable a) => k -> LambdaExpr (TVar k) a
+var = var' . TVar
+
+
+(.+) :: (Num a) => LambdaExpr v a -> LambdaExpr v a -> LambdaExpr v a
+x .+ y = SWrap (Add x y)
+
+
+
+example :: LambdaExpr (TVar String) (Int -> Float -> Float -> Float)
+example = lam "x" $ lam "y" $ lam "z" $ var "y" .+ var "z"
+
+
+eval :: LambdaExpr v a -> a
+eval = runIdentity . hfoldMap (const (error "can't evaluate with free variables"))

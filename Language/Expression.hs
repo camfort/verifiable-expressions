@@ -25,10 +25,10 @@ infixr 1 ^>>=
 --  Functor / Monad
 --------------------------------------------------------------------------------
 
-class HFunctor h where
+class HFunctor (h :: (u -> *) -> u -> *) where
   hmap :: (forall b. t b -> t' b) -> h t a -> h t' a
 
-  default hmap :: (HTraversable (h :: (* -> *) -> * -> *)) => (forall b. t b -> t' b) -> h t a -> h t' a
+  default hmap :: (HTraversable h) => (forall b. t b -> t' b) -> h t a -> h t' a
   hmap f = runIdentity . htraverse (Identity . f)
 
 class HPointed h where
@@ -110,7 +110,7 @@ class (HBifunctor h) => HBitraversable h where
 --  (Even) Higher-Order Binary Classes
 --------------------------------------------------------------------------------
 
-class HDuofunctor h where
+class HDuofunctor (h :: ((u -> *) -> u -> *) -> (u -> *) -> u -> *) where
   hduomap
     :: (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
     -> (forall b. t b -> t' b)
@@ -118,7 +118,7 @@ class HDuofunctor h where
     -> h s' t' a
 
   default hduomap
-    :: (HDuotraversable (h :: ((* -> *) -> * -> *) -> (* -> *) -> * -> *))
+    :: (HDuotraversable h)
     => (forall g g' b. (forall c. g c -> g' c) -> s g b -> s' g' b)
     -> (forall b. t b -> t' b)
     -> h s t a
@@ -276,7 +276,7 @@ instance HFunctor h => HBind (HFree h) where
 instance HFunctor h => HMonad (HFree h)
 
 
-instance (HFunctor h, HFoldableAt k h) => HFoldableAt k (HFree h) where
+instance (HFoldableAt k h) => HFoldableAt k (HFree h) where
   hfoldMap f = \case
     HPure x -> f x
     HWrap x -> hfoldMap (hfoldMap f) x
@@ -288,11 +288,7 @@ instance HTraversable h => HTraversable (HFree h) where
     HWrap x -> HWrap <$> htraverse (htraverse f) x
 
 
-instance HDuofunctor HFree where
-  hduomap g f = \case
-    HPure x -> HPure $ f x
-    HWrap x -> HWrap $ g (hduomap g f) x
-
+instance HDuofunctor HFree
 instance HDuotraversable HFree where
   hduotraverse g f = \case
     HPure x -> HPure <$> f x

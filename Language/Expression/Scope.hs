@@ -150,7 +150,7 @@ instance HTraversable h => HTraversable (Scoped h f) where
 --  Scoped Free Monads
 --------------------------------------------------------------------------------
 
-data SFree h (f :: * -> *) a
+data SFree h f a
   = SPure (f a)
   | SWrap (h (Scoped (SFree h) f) (SFree h f) a)
 

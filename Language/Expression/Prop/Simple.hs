@@ -13,7 +13,7 @@
 Propositions and combinators for conveniently constructing them.
 
 -}
-module Language.Expression.Prop
+module Language.Expression.Prop.Simple
   (
     -- * Proposition Types
     Prop

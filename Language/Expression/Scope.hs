@@ -81,17 +81,15 @@ instance HFunctor h => HFunctor (Scope g h) where
 instance HPointed h => HPointed (Scope g h) where
   hpure = Scope . hpure . hpure . hpure
 
--- instance HFoldable h => HFoldable (Scope g h) where
---   hfoldMap f (Scope x) = hfoldMap (hfoldMap (hfoldMap f)) x
-
 instance HTraversable h => HTraversable (Scope g h) where
   htraverse f = _Scope %%~ htraverse (htraverse (htraverse f))
 
 
 instance HDuofunctor (Scope g) where
+  hduomap g f = _Scope %~ g (hmap (g f))
 
 instance HDuotraversable (Scope g) where
-  hduotraverse f g = _Scope %%~ f (htraverse (f g))
+  hduotraverse g f = _Scope %%~ g (htraverse (g f))
 
 
 instance HBound (Scope g) where
@@ -130,10 +128,6 @@ abstract f = Scope . hmap (\y -> maybe ((hpure . hpure) y) B $ f y)
 -- instantiate :: (Substitutive op, Applicative f) => (forall b. w b -> f (op v b)) -> Scope g h f a -> f (op v a)
 -- instantiate f (Scope x) = bindVars (foldBV f pure) x
 
---------------------------------------------------------------------------------
---  Scoped Free Monads
---------------------------------------------------------------------------------
-
 -- | Sometimes it's convenient to move around the type arguments to 'Scope'.
 newtype Scoped h f g a = Scoped { unscoped :: Scope g h f a }
 
@@ -149,8 +143,14 @@ instance HFunctor h => HBifunctor (Scoped h) where
 instance HTraversable h => HBitraversable (Scoped h) where
   hbitraverse f g = _Scoped . _Scope %%~ htraverse (hbitraverse g (htraverse f))
 
+instance HTraversable h => HTraversable (Scoped h f) where
+  htraverse = hbitraverse pure
 
-data SFree h (f :: * -> *) a
+--------------------------------------------------------------------------------
+--  Scoped Free Monads
+--------------------------------------------------------------------------------
+
+data SFree h f a
   = SPure (f a)
   | SWrap (h (Scoped (SFree h) f) (SFree h f) a)
 
@@ -178,7 +178,7 @@ instance HDuofoldableAt k (Scope k) where
 instance (HFunctor h, HFoldableAt k h) => HBifoldableAt k (Scoped h) where
   hbifoldMap f g = hfoldMap (hbifoldMap g (hfoldMap f)) . view (_Scoped . _Scope)
 
-instance (HDuofunctor h, HDuofoldableAt k h) => HFoldableAt k (SFree h) where
+instance (HDuotraversable h, HDuofoldableAt k h) => HFoldableAt k (SFree h) where
   hfoldMap f = \case
     SPure x -> f x
     SWrap x ->

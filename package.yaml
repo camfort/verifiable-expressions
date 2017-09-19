@@ -17,6 +17,7 @@ library:
   ghc-options: -Wall
   exposed-modules:
   - Language.Expression
+  - Language.Expression.Example
   - Language.Expression.Choice
   - Language.Expression.Scope
   - Language.Expression.GeneralOp

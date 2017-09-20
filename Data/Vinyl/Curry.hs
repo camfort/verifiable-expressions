@@ -17,14 +17,11 @@ class RecordCurry ts where
   type CurriedF (f :: * -> *) ts a
   type Curried ts a
 
+  -- | N-ary version of 'curry' over functorial records.
   rcurry :: (Rec f ts -> a) -> CurriedF f ts a
+
+  -- | N-ary version of 'curry' over pure records.
   rcurry' :: (Rec Identity ts -> a) -> Curried ts a
-
-  runcurry :: CurriedF f ts a -> Rec f ts -> a
-  runcurryA' :: (Applicative f) => f (Curried ts a) -> Rec f ts -> f a
-
-  runcurryA :: (Applicative f) => Curried ts a -> Rec f ts -> f a
-  runcurryA = runcurryA' . pure
 
 
 instance RecordCurry '[] where
@@ -32,12 +29,7 @@ instance RecordCurry '[] where
   type Curried '[] a = a
 
   rcurry f = f RNil
-
   rcurry' f = f RNil
-
-  runcurry x RNil = x
-
-  runcurryA' x RNil = x
 
 
 instance RecordCurry ts => RecordCurry (t : ts) where
@@ -45,11 +37,30 @@ instance RecordCurry ts => RecordCurry (t : ts) where
   type Curried (t : ts) a = t -> Curried ts a
 
   rcurry f x = rcurry (\xs -> f (x :& xs))
-
   rcurry' f x = rcurry' (\xs -> f (Identity x :& xs))
 
-  runcurry f (x :& xs) = runcurry (f x) xs
+-- | N-ary version of 'uncurry' over functorial records.
+runcurry :: CurriedF f ts a -> Rec f ts -> a
+runcurry x RNil = x
+runcurry f (x :& xs) = runcurry (f x) xs
 
-  runcurryA' f (x :& xs) =
-    let f' = f <*> x
-    in runcurryA' f' xs
+
+-- | N-ary version of 'uncurry' over pure records.
+runcurry' :: Curried ts a -> Rec Identity ts -> a
+runcurry' x RNil = x
+runcurry' f (Identity x :& xs) = runcurry' (f x) xs
+
+
+-- | N-ary version of 'Control.Applicative.liftA2' over records where the
+-- functor is 'Applicative'.
+rliftA :: (Applicative f) => (Rec Identity ts -> a) -> Rec f ts -> f a
+rliftA = go . pure
+  where
+    go :: (Applicative f) => f (Rec Identity ts -> a) -> Rec f ts -> f a
+    go f RNil = f <*> pure RNil
+    go f (x :& xs) = go ((\f' x' xs' -> f' (Identity x' :& xs')) <$> f <*> x) xs
+
+
+-- | Lift an N-ary function to work over a record of 'Applicative' computations.
+runcurryA :: (Applicative f, RecordCurry ts) => Curried ts a -> Rec f ts -> f a
+runcurryA = rliftA . runcurry'

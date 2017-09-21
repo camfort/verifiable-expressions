@@ -25,8 +25,10 @@ class HBound k where
 --------------------------------------------------------------------------------
 
 data BV g f a where
-  B :: g a -> BV g f a -- ^ Bound variable
-  F :: f a -> BV g f a -- ^ Free variable
+  -- | Bound variable
+  B :: g a -> BV g f a
+  -- | Free variable
+  F :: f a -> BV g f a
 
 instance HFunctor (BV g) where
   hmap = hliftM

@@ -32,4 +32,3 @@ library:
   - Language.While.Syntax
   - Language.While.Syntax.Sugar
   - Language.While.Test
-  - Data.Vinyl.Curry

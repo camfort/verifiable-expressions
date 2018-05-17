@@ -50,20 +50,20 @@ instance EvalOpAt Identity WhileOpKind where
   evalMany = \case
     OpLit x -> \_ -> pure x
 
-    OpAdd -> runcurryA (+)
-    OpSub -> runcurryA (-)
-    OpMul -> runcurryA (*)
+    OpAdd -> runcurryA' (+)
+    OpSub -> runcurryA' (-)
+    OpMul -> runcurryA' (*)
 
-    OpEq -> runcurryA (==)
-    OpLT -> runcurryA (<)
-    OpLE -> runcurryA (<=)
-    OpGT -> runcurryA (>)
-    OpGE -> runcurryA (>=)
+    OpEq -> runcurryA' (==)
+    OpLT -> runcurryA' (<)
+    OpLE -> runcurryA' (<=)
+    OpGT -> runcurryA' (>)
+    OpGE -> runcurryA' (>=)
 
-    OpAnd -> runcurryA (&&)
-    OpOr -> runcurryA (||)
+    OpAnd -> runcurryA' (&&)
+    OpOr  -> runcurryA' (||)
 
-    OpNot -> runcurryA not
+    OpNot -> runcurryA' not
 
 instance EvalOpAt SBV WhileOpKind where
   evalMany = \case

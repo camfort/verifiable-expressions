@@ -43,6 +43,7 @@ module Language.Verification.Conditions
   ) where
 
 import           Data.List                  (intersperse)
+import           Data.Semigroup             ()
 import           Data.Monoid                (Endo (..))
 
 import           Control.Monad.Writer       (MonadWriter (tell))
@@ -146,10 +147,13 @@ newtype JoinAnnSeq expr var cmd = JoinAnnSeq { tryJoinAnnSeq :: Maybe (AnnSeq ex
 joiningAnnSeq :: AnnSeq expr var cmd -> JoinAnnSeq expr var cmd
 joiningAnnSeq = JoinAnnSeq . Just
 
+instance Semigroup (JoinAnnSeq expr var cmd) where
+  JoinAnnSeq (Just x) <> JoinAnnSeq (Just y) = JoinAnnSeq (x `joinAnnSeq` y)
+  _ <> _ = JoinAnnSeq Nothing
+
 instance Monoid (JoinAnnSeq expr var cmd) where
   mempty = JoinAnnSeq (Just emptyAnnSeq)
-  mappend (JoinAnnSeq (Just x)) (JoinAnnSeq (Just y)) = JoinAnnSeq (x `joinAnnSeq` y)
-  mappend _ _ = JoinAnnSeq Nothing
+  mappend = (<>)
 
 --------------------------------------------------------------------------------
 --  Generating verification conditions

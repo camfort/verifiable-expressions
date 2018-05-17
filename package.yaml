@@ -1,18 +1,18 @@
 name: verifiable-expressions
-version: '0.3.0.0'
+version: '0.3.1.0'
 category: Language
 author: Bradley Hardy
 maintainer: bch29@cam.ac.uk
 license: Apache-2.0
 dependencies:
-- base >=4.9 && <4.11
+- base >=4.9 && <5
 - containers >=0.5.7 && <0.6
 - transformers >=0.5 && <0.6
 - mtl >=2.0 && <3
-- lens >=4.10 && <5
+- lens >=4.16.1 && <5
 - sbv >=7.0 && <8
 - union >=0.1.1 && <0.2
-- vinyl >=0.6 && <0.7
+- vinyl >=0.8.1 && <0.9
 library:
   ghc-options: -Wall
   exposed-modules:

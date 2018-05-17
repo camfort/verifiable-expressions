@@ -43,7 +43,7 @@ module Language.Verification.Conditions
   ) where
 
 import           Data.List                  (intersperse)
-import           Data.Semigroup             ()
+import           Data.Semigroup             (Semigroup(..))
 import           Data.Monoid                (Endo (..))
 
 import           Control.Monad.Writer       (MonadWriter (tell))

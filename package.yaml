@@ -4,6 +4,10 @@ category: Language
 author: Bradley Hardy
 maintainer: bch29@cam.ac.uk
 license: Apache-2.0
+synopsis: An intermediate language for Hoare logic style verification.
+description:
+  A typed intermediate language for Hoare logic style verification. It defines
+  the intermediate language and combinators to interact it.
 dependencies:
 - base >=4.9 && <5
 - containers >=0.5.7 && <0.6

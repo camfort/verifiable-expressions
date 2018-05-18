@@ -1,8 +1,9 @@
 name: verifiable-expressions
-version: '0.4.0'
+version: '0.5.0'
 category: Language
 author: Bradley Hardy
-maintainer: bch29@cam.ac.uk
+maintainer: madgenhetic@gmail.com
+github: camfort/verifiable-expressions
 license: Apache-2.0
 synopsis: An intermediate language for Hoare logic style verification.
 description:

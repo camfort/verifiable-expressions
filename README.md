@@ -1,3 +1,6 @@
-# language-verification
+# Verifiable Expressions
 
-Please see [Language.Expression.Example](https://github.com/bch29/language-verification/blob/master/Language/Expression/Example.hs) for how to use this library.
+Intermediate language for Hoare Logic style verification and useful combinators.
+
+Please see
+[Language.Expression.Example](https://github.com/camfort/verifiable-expressions/blob/master/Language/Expression/Example.hs) for how to use this library.

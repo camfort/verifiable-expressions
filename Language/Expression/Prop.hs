@@ -121,17 +121,17 @@ instance HFoldableAt Identity LogicOp where
     LogNot x -> not <$> x
     LogAnd x y -> liftA2 (&&) x y
     LogOr x y -> liftA2 (||) x y
-    LogImpl x y -> liftA2 (==>) x y
-    LogEquiv x y -> liftA2 (<=>) x y
+    LogImpl x y -> liftA2 (||) (not <$> x) y
+    LogEquiv x y -> liftA2 (&&) (liftA2 (||) (not <$> x) y) (liftA2 (||) (not <$> y) x)
 
 instance HFoldableAt SBV LogicOp where
   hfoldMap = implHfoldMap $ \case
     LogLit b -> fromBool b
-    LogNot x -> bnot x
-    LogAnd x y -> x &&& y
-    LogOr x y -> x ||| y
-    LogImpl x y -> x ==> y
-    LogEquiv x y -> x <=> y
+    LogNot x -> sNot x
+    LogAnd x y -> x .&& y
+    LogOr x y -> x .|| y
+    LogImpl x y -> x .=> y
+    LogEquiv x y -> x .<=> y
 
 -- instance HEq LogicOp where
 --   liftHEq _ _ (LogLit x) (LogLit y) = x == y

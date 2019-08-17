@@ -79,10 +79,10 @@ instance EvalOpAt SBV WhileOpKind where
     OpGT -> runcurry (.>)
     OpGE -> runcurry (.>=)
 
-    OpAnd -> runcurry (&&&)
-    OpOr -> runcurry (|||)
+    OpAnd -> runcurry (.&&)
+    OpOr -> runcurry (.||)
 
-    OpNot -> runcurry bnot
+    OpNot -> runcurry sNot
 
 -- instance EqOpMany WhileOpKind where
 --   liftEqMany (OpLit x) (OpLit y) _ = \_ _ -> x == y

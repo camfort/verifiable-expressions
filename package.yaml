@@ -1,5 +1,5 @@
 name: verifiable-expressions
-version: '0.6.0'
+version: '0.7.0'
 category: Language
 author: Bradley Hardy
 maintainer: madgenhetic@gmail.com
@@ -17,7 +17,7 @@ dependencies:
 - lens >=4.16.1 && <5
 - sbv >=8.0 && <9
 - union >=0.1.1 && <0.2
-- vinyl >=0.8.1 && <0.9
+- vinyl >=0.8.1 && <0.14
 library:
   source-dirs: src
   ghc-options: -Wall

@@ -21,7 +21,7 @@ import           Language.Expression
 import           Language.Expression.Pretty
 
 data GeneralOp op t a where
-  Op :: op as r -> Rec t as -> GeneralOp op t r
+  Op :: RMap as => op as r -> Rec t as -> GeneralOp op t r
 
 class EvalOpAt k op where
   evalMany :: op as r -> Rec k as -> k r

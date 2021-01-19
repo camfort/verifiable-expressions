@@ -17,7 +17,7 @@ dependencies:
 - lens >=4.16.1 && <5
 - sbv >=8.0 && <9
 - union >=0.1.1 && <0.2
-- vinyl >=0.8.1 && <0.9
+- vinyl >=0.8.1 && <0.14
 library:
   ghc-options: -Wall
   exposed-modules:

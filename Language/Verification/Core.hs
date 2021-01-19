@@ -115,6 +115,7 @@ newtype Query v a =
            , Applicative
            , Monad
            , MonadIO
+           , MonadFail      -- required since GHC 8.8
            )
 
 query :: (VerifiableVar v) => Query v SBool -> VarEnv v -> Verifier v Bool

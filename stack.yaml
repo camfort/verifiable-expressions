@@ -1,8 +1,11 @@
-flags: {}
-extra-package-dbs: []
+resolver: lts-16.28
 packages:
 - '.'
+
+flags: {}
+extra-package-dbs: []
+
 extra-deps:
-- syz-0.2.0.0
-- vinyl-0.8.1
-resolver: lts-14.1
+- sbv-8.9@sha256:efb0f16c671869805e57d11e269793d5e5ae512e8e626582cf76b8e46a63e9c6,28985
+- vinyl-0.13.0@sha256:0f247cd3f8682b30881a07de18e6fec52d540646fbcb328420049cc8d63cd407,3724
+- union-0.1.2@rev:5

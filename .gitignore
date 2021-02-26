@@ -1,4 +1,5 @@
 /.stack-work
-/*.cabal
+/dist-newstyle
+/cabal.project.freeze
 
 .DS_Store

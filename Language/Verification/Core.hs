@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE CPP                        #-}
 
 module Language.Verification.Core where
 
@@ -115,7 +116,9 @@ newtype Query v a =
            , Applicative
            , Monad
            , MonadIO
+#if MIN_VERSION_base(4,13,0)
            , MonadFail      -- required since GHC 8.8
+#endif
            )
 
 query :: (VerifiableVar v) => Query v SBool -> VarEnv v -> Verifier v Bool

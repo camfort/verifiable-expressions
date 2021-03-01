@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7cea2cb72ad05c5c620abdedc0f678b222f076cc02b7416534720fee3cdb4036
+-- hash: b61cc1fb115270326d22ec5fbcdd0a38b0aed4c1489d119b344cf4e41c987188
 
 name:           verifiable-expressions
-version:        0.6.0
+version:        0.6.1
 synopsis:       An intermediate language for Hoare logic style verification.
 description:    A typed intermediate language for Hoare logic style verification. It defines the intermediate language and combinators to interact it.
 category:       Language
@@ -18,6 +18,8 @@ maintainer:     madgenhetic@gmail.com
 license:        Apache-2.0
 license-file:   LICENSE
 build-type:     Simple
+extra-source-files:
+    CHANGELOG.md
 
 source-repository head
   type: git
@@ -52,5 +54,5 @@ library
     , sbv >=8.0 && <9
     , transformers >=0.5 && <0.6
     , union >=0.1.1 && <0.2
-    , vinyl >=0.8.1 && <0.14
+    , vinyl >=0.9 && <0.14
   default-language: Haskell2010

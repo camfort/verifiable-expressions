@@ -1,10 +1,8 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: b61cc1fb115270326d22ec5fbcdd0a38b0aed4c1489d119b344cf4e41c987188
 
 name:           verifiable-expressions
 version:        0.6.1
@@ -49,10 +47,10 @@ library
   build-depends:
       base >=4.9 && <5
     , containers >=0.5.7 && <0.7
-    , lens >=4.16.1 && <5
+    , lens >=4.16.1 && <5.1
     , mtl >=2.0 && <3
     , sbv >=8.0 && <9
-    , transformers >=0.5 && <0.6
+    , transformers ==0.5.*
     , union >=0.1.1 && <0.2
     , vinyl >=0.9 && <0.14
   default-language: Haskell2010

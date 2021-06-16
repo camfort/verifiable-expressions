@@ -45,8 +45,12 @@ instance HMonad (BV g)
 -- instance (HFoldableAt k g) => HFoldableAt k (BV g) where
 --   hfoldMap = hbifoldMap . hfoldMap
 
+-- Note that since GHC 9.0, a handful of these instances must be eta-expanded
+-- manually due to simplified subsumption. So if you see an @f@ or @g@ that
+-- looks like it could be omitted with a pointfree-er definition, that's likely
+-- the reason.
 instance HTraversable (BV g) where
-  htraverse = hbitraverseBV pure
+  htraverse f = hbitraverseBV pure f
 
 foldBV :: (w a -> r) -> (v a -> r) -> BV w v a -> r
 foldBV f g = \case
@@ -54,10 +58,10 @@ foldBV f g = \case
   F y -> g y
 
 instance HBifunctor BV where
-  hbimap = hbimapBV
+  hbimap f g = hbimapBV f g
 
 instance HBitraversable BV where
-  hbitraverse = hbitraverseBV
+  hbitraverse f g = hbitraverseBV f g
 
 hbitraverseBV :: (Functor t) => (g a -> t (g' b)) -> (f a -> t (f' b)) -> BV g f a -> t (BV g' f' b)
 hbitraverseBV f g = foldBV (fmap B . f) (fmap F . g)
@@ -66,7 +70,7 @@ hbimapBV :: (g a -> g' b) -> (f a -> f' b) -> BV g f a -> BV g' f' b
 hbimapBV f g = foldBV (B . f) (F . g)
 
 instance HBifoldableAt k BV where
-  hbifoldMap = foldBV
+  hbifoldMap f g = foldBV f g
 
 --------------------------------------------------------------------------------
 --  Scopes

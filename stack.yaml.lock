@@ -5,29 +5,36 @@
 
 packages:
 - completed:
-    hackage: sbv-8.9@sha256:efb0f16c671869805e57d11e269793d5e5ae512e8e626582cf76b8e46a63e9c6,28985
+    hackage: sbv-9.0@sha256:e1dc8665386b14e62c9eb98e59bd665b3ae85f8089e4d85bed65f49bc3556a23,24513
     pantry-tree:
-      size: 62515
-      sha256: 9bb3bb8dbb26363388e013c795e60e81f9b243ecac6e28b3e9d7079c083ebdf4
+      sha256: b1990b555bed3601bae8cf85dc8794b07ce546ac91f7fb107450097a1229c199
+      size: 64588
   original:
-    hackage: sbv-8.9@sha256:efb0f16c671869805e57d11e269793d5e5ae512e8e626582cf76b8e46a63e9c6,28985
+    hackage: sbv-9.0@sha256:e1dc8665386b14e62c9eb98e59bd665b3ae85f8089e4d85bed65f49bc3556a23,24513
 - completed:
-    hackage: vinyl-0.13.0@sha256:0f247cd3f8682b30881a07de18e6fec52d540646fbcb328420049cc8d63cd407,3724
+    hackage: vinyl-0.14.3@sha256:08565c5d9ed8a5ba69915bffe8960f048587478155d5915a56d2e93b8ba3466f,4267
     pantry-tree:
-      size: 1857
-      sha256: 860fb95820b595161cdbdec5f376100ebae2d14e5ef0dbe311546202f7525d01
+      sha256: 8e6d12a18493a741c736c66d3f19be48ea9e52acdd38e66cfe87bbfd88cdbf7e
+      size: 2146
   original:
-    hackage: vinyl-0.13.0@sha256:0f247cd3f8682b30881a07de18e6fec52d540646fbcb328420049cc8d63cd407,3724
+    hackage: vinyl-0.14.3@sha256:08565c5d9ed8a5ba69915bffe8960f048587478155d5915a56d2e93b8ba3466f,4267
 - completed:
-    hackage: union-0.1.2@sha256:9f0f143ba2cf168c795339e1187001e96427bdcf9fe9af14b34a4f1ca5b531d8,2130
+    hackage: union-0.1.2@sha256:856669b7084f992ab7c369e64fefe3833814b35409ff67f1aad4657548b5a466,2134
     pantry-tree:
+      sha256: 9c4d03a246ad23b8b066b000532b84a9b710395084a8bced697908750da689e6
       size: 330
-      sha256: f1bc092a50de9cb9555747e1d3d3b4e30f494904aa168cbcc9b38103af90eee2
   original:
-    hackage: union-0.1.2@rev:6
+    hackage: union-0.1.2@rev:8
+- completed:
+    hackage: libBF-0.6.5.1@sha256:a4c7a332712ba2f08b8eb9983de4d52438331797e21f3bf1cb92f8ee4765f104,2465
+    pantry-tree:
+      sha256: 70aeaff1f42e08ad95bf912be7dcd49bd510ed712ea2fc50e8ff79b6a37feeb6
+      size: 761
+  original:
+    hackage: libBF-0.6.5.1@sha256:a4c7a332712ba2f08b8eb9983de4d52438331797e21f3bf1cb92f8ee4765f104,2465
 snapshots:
 - completed:
+    sha256: a9c01d860ac8dfb3a1b6f7ec4a36dd9504a95392b89c99b0877da63fa36a8e97
     size: 533053
     url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/28.yaml
-    sha256: a9c01d860ac8dfb3a1b6f7ec4a36dd9504a95392b89c99b0877da63fa36a8e97
   original: lts-16.28

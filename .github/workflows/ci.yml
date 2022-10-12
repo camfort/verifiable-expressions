@@ -42,10 +42,9 @@ jobs:
       matrix:
         cabal: ["3.4"]      # latest as of 2021-06-16
         ghc:
-        - "8.6"
-        - "8.8"
-        - "8.10"
-        - "9.0"
+        - "8.6.5"
+        - "9.2.4"
+        - "9.4.2"
     env:
       # note that all flags must be passed to every command even when
       # irrelevant, else Cabal will trigger arbitrary rebuilds

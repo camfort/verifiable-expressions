@@ -25,6 +25,7 @@ import           Data.Typeable            ((:~:) (..), Typeable)
 import           Data.Functor.Compose
 
 import           Control.Lens             hiding ((.>))
+import           Control.Monad            ((<=<))
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State

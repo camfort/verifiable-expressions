@@ -19,9 +19,16 @@ dependencies:
 - transformers >=0.5 && <0.7
 - mtl >=2.0 && <3
 - lens >=4.16.1 && <5.3
-- sbv >=8.0 && <10
 - union >=0.1.2 && <0.2
 - vinyl >=0.14.3 && <0.15
+
+when:
+- condition: impl(ghc >= 9.6)
+  dependencies:
+  - sbv >=10.0 && <11
+- condition: impl(ghc < 9.6)
+  dependencies:
+  - sbv >=8.0 && <10
 
 library:
   ghc-options: -Wall

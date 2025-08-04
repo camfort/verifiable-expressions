@@ -18,7 +18,7 @@ dependencies:
 - containers >=0.5.7 && <0.7
 - transformers >=0.5 && <0.7
 - mtl >=2.0 && <3
-- lens >=4.16.1 && <5.3
+- lens >=4.16.1 && <5.5
 - union >=0.1.2 && <0.2
 - vinyl >=0.14.3 && <0.15
 

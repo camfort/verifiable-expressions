@@ -11,9 +11,16 @@ packages:
       size: 330
   original:
     hackage: union-0.1.2
+- completed:
+    hackage: sbv-10.12@sha256:b4642dfef053e15ad3628ea517298ba4afd6f3f994bd0d6021ea6e647bf49383,24547
+    pantry-tree:
+      sha256: 1d061bfb8d77ee81316c05e0091b0cb3982946b7ea2b8f32d814256a762eb774
+      size: 72702
+  original:
+    hackage: sbv-10.12
 snapshots:
 - completed:
-    sha256: 238fa745b64f91184f9aa518fe04bdde6552533d169b0da5256670df83a0f1a9
-    size: 721141
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/22/44.yaml
-  original: lts-22.44
+    sha256: 069c8189232279d04bd107557d3a62132c04ae5ce3c710649e6b40f67f10b9d5
+    size: 684285
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/23/27.yaml
+  original: lts-23.27

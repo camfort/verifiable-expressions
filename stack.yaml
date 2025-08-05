@@ -1,4 +1,4 @@
-resolver: lts-22.44
+resolver: lts-23.27
 packages:
 - '.'
 
@@ -7,3 +7,4 @@ extra-package-dbs: []
 
 extra-deps:
   - union-0.1.2@dd8da96d3d15c71a75d648377e6b55bd2614010db80f8cf4bda5b49a8a9684af
+  - sbv-10.12

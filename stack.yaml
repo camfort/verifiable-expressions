@@ -1,4 +1,4 @@
-resolver: lts-23.27
+resolver: lts-24.2
 packages:
 - '.'
 
@@ -8,3 +8,6 @@ extra-package-dbs: []
 extra-deps:
   - union-0.1.2@dd8da96d3d15c71a75d648377e6b55bd2614010db80f8cf4bda5b49a8a9684af
   - sbv-10.12
+  - containers-0.6.8@sha256:bb2bec1bbc6b39a7c97cd95e056a5698ec45beb5d8feb6caae12af64e4bd823c,2670
+  - binary-0.8.9.3@sha256:8b03c7fd5a7f6803280fba87e38d534beb1dc92fec975de5bd36200633996ef2,6576
+  - text-2.1.3@sha256:1907e0f6914e376df3a3a1fbc5a04e49c729d333de34babba4da30075048c60f,11185

@@ -1,4 +1,4 @@
-resolver: lts-16.28
+resolver: lts-22.44
 packages:
 - '.'
 
@@ -6,7 +6,4 @@ flags: {}
 extra-package-dbs: []
 
 extra-deps:
-- sbv-9.0@sha256:e1dc8665386b14e62c9eb98e59bd665b3ae85f8089e4d85bed65f49bc3556a23,24513
-- vinyl-0.14.3@sha256:08565c5d9ed8a5ba69915bffe8960f048587478155d5915a56d2e93b8ba3466f,4267
-- union-0.1.2@rev:8
-- libBF-0.6.5.1@sha256:a4c7a332712ba2f08b8eb9983de4d52438331797e21f3bf1cb92f8ee4765f104,2465
+  - union-0.1.2@dd8da96d3d15c71a75d648377e6b55bd2614010db80f8cf4bda5b49a8a9684af

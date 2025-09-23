@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           verifiable-expressions
-version:        0.6.2
+version:        0.6.3
 synopsis:       An intermediate language for Hoare logic style verification.
 description:    A typed intermediate language for Hoare logic style verification. It defines the intermediate language and combinators to interact it.
 category:       Language

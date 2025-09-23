@@ -9,6 +9,7 @@ synopsis: An intermediate language for Hoare logic style verification.
 description:
   A typed intermediate language for Hoare logic style verification. It defines
   the intermediate language and combinators to interact it.
+tested-with:            GHC == 9.0, GHC == 9.2, GHC == 9.4, GHC == 9.6, GHC == 9.8, GHC == 9.10, GHC == 9.12
 
 extra-source-files:
 - CHANGELOG.md
@@ -18,10 +19,17 @@ dependencies:
 - containers >=0.5.7 && <0.7
 - transformers >=0.5 && <0.7
 - mtl >=2.0 && <3
-- lens >=4.16.1 && <5.3
-- sbv >=8.0 && <10
+- lens >=4.16.1 && <5.5
 - union >=0.1.2 && <0.2
 - vinyl >=0.14.3 && <0.15
+
+when:
+- condition: impl(ghc >= 9.6)
+  dependencies:
+  - sbv >=10.0 && <11
+- condition: impl(ghc < 9.6)
+  dependencies:
+  - sbv >=8.0 && <10
 
 library:
   ghc-options: -Wall

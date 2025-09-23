@@ -9,6 +9,7 @@
 
 module Language.While.Hoare where
 
+import Control.Monad (void, mzero)
 import Control.Monad.Writer
 
 import           Language.While.Syntax

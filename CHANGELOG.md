@@ -1,3 +1,7 @@
+## 0.6.3 (23 Sep 2025)
+* Stack builds using LTS-24.2
+* Cabal builds under GHC 9.0 thru 9.12
+
 ## 0.6.2 (16 Jun 2021)
 * Support GHC 9.0
 
